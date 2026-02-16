@@ -1,0 +1,37 @@
+# Infrastructure Environment Configuration
+
+infrastructure:
+  google_nest:
+    enabled: true
+    device_id: "nest-device-001"
+    api_key: "YOUR_GOOGLE_NEST_API_KEY"
+    location: "Living Room"
+    settings:
+      temperature_unit: "Celsius"
+      motion_detection: true
+      camera_enabled: true
+
+  amazon_echo:
+    enabled: true
+    device_id: "echo-device-001"
+    api_key: "YOUR_AMAZON_ECHO_API_KEY"
+    location: "Bedroom"
+    settings:
+      voice_recognition: true
+      volume_level: 5
+      smart_home_integration: true
+
+  security_system:
+    enabled: true
+    api_url: "https://security.example.com/api"
+    api_key: "YOUR_SECURITY_API_KEY"
+    settings:
+      alarm_enabled: true
+      notification_email: "security-alerts@example.com"
+      access_control:
+        - user: "admin"
+          permissions: ["arm", "disarm", "view_logs"]
+        - user: "guest"
+          permissions: ["view_logs"]
+
+# Add more devices or settings as needed
