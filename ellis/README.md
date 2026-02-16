@@ -1,6 +1,6 @@
-# Ellis - Exchange Odds Comparator
+# Ellis
 
-Queries multiple sportsbook exchange APIs, compares odds per market, and identifies differences (arbitrage opportunities, value gaps).
+Queries exchange APIs, compares market, and identifies differences (arbitrage opportunities, value gaps).
 
 ## Structure
 
