@@ -32,7 +32,7 @@ from src.scheduler import Scheduler
 
 # Default config directories per module
 _DEFAULT_CONFIG_DIR = {
-    "auctions":    "config",
+    "auctions":    "config/auctions",
     "classifieds": "config/classifieds",
 }
 
