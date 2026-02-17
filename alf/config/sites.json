@@ -1,0 +1,135 @@
+{
+  "sites": [
+    {
+      "name": "classic_iron",
+      "enabled": true,
+      "adapter": "rest",
+      "base_url": "https://api.classiciron.example.com/v2",
+      "auth": {
+        "type": "api_key",
+        "header": "X-Api-Key",
+        "env_var": "CLASSIC_IRON_API_KEY"
+      },
+      "endpoints": {
+        "auctions": "/auctions/results"
+      },
+      "rate_limit": {
+        "requests_per_second": 2.0,
+        "burst": 5
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff_factor": 2.0,
+        "retry_on_status": [429, 500, 502, 503, 504]
+      },
+      "default_params": {
+        "status": "sold",
+        "currency": "GBP",
+        "page_size": 100
+      },
+      "pagination": {
+        "type": "offset",
+        "page_param": "page",
+        "page_size_param": "page_size",
+        "start_page": 1
+      },
+      "field_mapping": {
+        "id":            "auction_id",
+        "manufacturer":  "make",
+        "model":         "model_name",
+        "auction_date":  "end_date",
+        "sold_price":    "hammer_price",
+        "reserve_price": "reserve",
+        "start_price":   "opening_bid",
+        "currency":      "currency_code",
+        "lot_id":        "lot_number",
+        "url":           "listing_url"
+      }
+    },
+    {
+      "name": "auction_world",
+      "enabled": true,
+      "adapter": "rest",
+      "base_url": "https://www.auctionworld.example.net/api",
+      "auth": {
+        "type": "oauth2_client_credentials",
+        "token_url": "https://auth.auctionworld.example.net/oauth/token",
+        "client_id_env_var": "AUCTION_WORLD_CLIENT_ID",
+        "client_secret_env_var": "AUCTION_WORLD_CLIENT_SECRET",
+        "scope": "auctions:read"
+      },
+      "endpoints": {
+        "auctions": "/lots/completed"
+      },
+      "rate_limit": {
+        "requests_per_second": 1.0,
+        "burst": 3
+      },
+      "retry": {
+        "max_attempts": 4,
+        "backoff_factor": 1.5,
+        "retry_on_status": [429, 500, 503]
+      },
+      "default_params": {
+        "sold_only": true,
+        "limit": 50
+      },
+      "pagination": {
+        "type": "cursor",
+        "cursor_param": "cursor",
+        "cursor_response_field": "next_cursor"
+      },
+      "field_mapping": {
+        "id":            "id",
+        "manufacturer":  "brand",
+        "model":         "model",
+        "auction_date":  "sold_at",
+        "sold_price":    "final_price",
+        "reserve_price": "reserve_price",
+        "start_price":   "start_price",
+        "currency":      "currency",
+        "lot_id":        "lot_ref",
+        "url":           "url"
+      }
+    },
+    {
+      "name": "heritage_lots",
+      "enabled": false,
+      "adapter": "rest",
+      "base_url": "https://api.heritagelots.example.com",
+      "auth": {
+        "type": "basic",
+        "username_env_var": "HERITAGE_USERNAME",
+        "password_env_var": "HERITAGE_PASSWORD"
+      },
+      "endpoints": {
+        "auctions": "/search/sold"
+      },
+      "rate_limit": {
+        "requests_per_second": 0.5,
+        "burst": 1
+      },
+      "retry": {
+        "max_attempts": 2,
+        "backoff_factor": 3.0,
+        "retry_on_status": [429, 500]
+      },
+      "default_params": {},
+      "pagination": {
+        "type": "none"
+      },
+      "field_mapping": {
+        "id":            "ref",
+        "manufacturer":  "manufacturer",
+        "model":         "model",
+        "auction_date":  "date_sold",
+        "sold_price":    "sold",
+        "reserve_price": "reserve",
+        "start_price":   "estimate_low",
+        "currency":      "ccy",
+        "lot_id":        "lot",
+        "url":           "permalink"
+      }
+    }
+  ]
+}
