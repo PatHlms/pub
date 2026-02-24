@@ -1,19 +1,22 @@
+from __future__ import annotations
+
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 import filelock
 
 from src.exchange.base import BaseExchangeAdapter
-from src.models import Signal, Wager
+from src.models import Signal, Wager, WagerStatus
 
 if TYPE_CHECKING:
     from src.funds_manager import FundsManager
 
 log = logging.getLogger(__name__)
 
-_LOCK_TIMEOUT = 5
+_LOCK_TIMEOUT   = 5
 _WAGER_FILENAME = "wagers.json"
 
 
@@ -33,13 +36,23 @@ class WagerManager:
 
     If a FundsManager is supplied, wager placement is gated on available
     funds and debits/credits are recorded for each lifecycle event.
+
+    P&L accounting
+    --------------
+    profit_loss from adapters is NET profit — it does NOT include the returned
+    stake. When a wager settles with profit_loss=+15 and stake=10, total_return
+    is 25 (stake 10 back + net profit 15). FundsManager is credited with
+    stake + profit_loss, which equals total_return.
+
+    For a full loss: profit_loss=-10, stake=10 → credit(0) → funds already
+    debited at placement, so net effect is -10. Correct.
     """
 
     def __init__(
         self,
         config: dict[str, Any],
         state_dir: str,
-        funds: Optional["FundsManager"] = None,
+        funds: Optional[FundsManager] = None,
     ) -> None:
         self._max_open           = config.get("max_open_wagers", 20)
         self._profit_threshold   = config.get("cashout_profit_threshold_pct", 10.0) / 100.0
@@ -51,7 +64,6 @@ class WagerManager:
         self._wager_file = self._state_dir / _WAGER_FILENAME
         self._lock_file  = self._state_dir / f"{_WAGER_FILENAME}.lock"
 
-        # wager_id → Wager
         self._wagers: dict[str, Wager] = self._load_wagers()
         log.info(
             "WagerManager initialised — %d wager(s) loaded (%d open)%s",
@@ -68,8 +80,9 @@ class WagerManager:
         """
         Poll the exchange for status updates on all open wagers.
 
-        Wagers that settle or lapse have their stake (plus any P&L) credited
-        back to FundsManager. Wagers above the profit threshold are cashed out.
+        Wagers that settle or lapse have their stake (plus any net P&L)
+        credited back to FundsManager. Wagers above the profit threshold
+        are cashed out proactively.
         """
         open_wagers = [w for w in self._wagers.values() if w.is_open()]
         if not open_wagers:
@@ -89,20 +102,23 @@ class WagerManager:
             exchange_status = status_info.get("status", wager.status)
             pl = status_info.get("profit_loss")
 
-            if exchange_status in ("settled", "lapsed", "cancelled"):
+            if exchange_status in (WagerStatus.SETTLED, WagerStatus.LAPSED, WagerStatus.CANCELLED):
                 wager.status      = exchange_status
                 wager.profit_loss = pl
                 log.info("Wager %s → %s  P&L=%s", wager.wager_id, exchange_status, pl)
-                # Credit funds: return stake + profit (or stake - loss)
                 if self._funds is not None:
-                    if exchange_status == "settled" and pl is not None:
+                    if exchange_status == WagerStatus.SETTLED and pl is not None:
+                        # Credit stake back plus net profit (total_return = stake + net_profit)
                         self._funds.credit(wager.signal.stake + pl, label=wager.wager_id)
                     else:
+                        # Lapsed/cancelled: full stake refund, no profit
                         self._funds.credit(wager.signal.stake, label=f"{wager.wager_id} lapsed")
                 changed = True
                 continue
 
-            if pl is not None and pl > 0 and pl / wager.signal.stake >= self._profit_threshold:
+            # Proactive cashout when profit threshold met
+            stake = wager.signal.stake
+            if pl is not None and pl > 0 and stake > 0 and (pl / stake) >= self._profit_threshold:
                 if self._do_cashout(wager, adapter):
                     changed = True
 
@@ -130,7 +146,6 @@ class WagerManager:
                 )
                 break
 
-            # Funds guard — skip if insufficient balance
             if self._funds is not None and not self._funds.can_wager(signal.stake):
                 log.warning(
                     "Funds guard: skipping signal for market=%s (stake=%.2f balance=%.2f)",
@@ -154,8 +169,8 @@ class WagerManager:
         if changed:
             self._persist_wagers()
 
-    def summary(self) -> dict[str, Any]:
-        """Return a snapshot of wager counts by status."""
+    def summary(self) -> dict[str, int]:
+        """Return wager counts keyed by status string."""
         counts: dict[str, int] = {}
         for w in self._wagers.values():
             counts[w.status] = counts.get(w.status, 0) + 1
@@ -168,7 +183,7 @@ class WagerManager:
     def _open_count(self) -> int:
         return sum(1 for w in self._wagers.values() if w.is_open())
 
-    def _find_open_by_market(self, market_id: str) -> Wager | None:
+    def _find_open_by_market(self, market_id: str) -> Optional[Wager]:
         for w in self._wagers.values():
             if w.is_open() and w.signal.market_id == market_id:
                 return w
@@ -182,16 +197,15 @@ class WagerManager:
             return False
 
         if ok:
-            from datetime import datetime, timezone
-            wager.status       = "cashed_out"
+            wager.status        = WagerStatus.CASHED_OUT
             wager.cashed_out_at = datetime.now(timezone.utc).isoformat()
             log.info("Cashed out wager %s (market=%s)", wager.wager_id, wager.signal.market_id)
-            # Return stake to available funds (P&L unknown at cashout time)
+            # Return stake to available funds (net P&L unknown at cashout time)
             if self._funds is not None:
                 self._funds.credit(wager.signal.stake, label=f"{wager.wager_id} cashout")
         return ok
 
-    def _place(self, signal: Signal, adapter: BaseExchangeAdapter) -> Wager | None:
+    def _place(self, signal: Signal, adapter: BaseExchangeAdapter) -> Optional[Wager]:
         try:
             wager = adapter.place(signal)
             log.info(
@@ -222,6 +236,6 @@ class WagerManager:
                 with open(self._wager_file, "w", encoding="utf-8") as f:
                     json.dump([w.to_dict() for w in self._wagers.values()], f, indent=2)
         except filelock.Timeout:
-            log.error("Lock timeout persisting wagers — state may be slightly stale")
+            log.error("Lock timeout persisting wagers — state may be slightly stale on restart")
         except OSError as exc:
             log.error("Could not persist wagers: %s", exc)
