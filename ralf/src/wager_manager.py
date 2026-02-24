@@ -1,12 +1,15 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import filelock
 
 from src.exchange.base import BaseExchangeAdapter
 from src.models import Signal, Wager
+
+if TYPE_CHECKING:
+    from src.funds_manager import FundsManager
 
 log = logging.getLogger(__name__)
 
@@ -27,13 +30,22 @@ class WagerManager:
            wagers; cashout those that exceed the profit threshold.
         2. process_signals(): for each actionable signal, optionally cashout
            an existing wager on the same market, then place a new one.
+
+    If a FundsManager is supplied, wager placement is gated on available
+    funds and debits/credits are recorded for each lifecycle event.
     """
 
-    def __init__(self, config: dict[str, Any], state_dir: str) -> None:
-        self._max_open       = config.get("max_open_wagers", 20)
-        self._profit_threshold = config.get("cashout_profit_threshold_pct", 10.0) / 100.0
+    def __init__(
+        self,
+        config: dict[str, Any],
+        state_dir: str,
+        funds: Optional["FundsManager"] = None,
+    ) -> None:
+        self._max_open           = config.get("max_open_wagers", 20)
+        self._profit_threshold   = config.get("cashout_profit_threshold_pct", 10.0) / 100.0
         self._cashout_on_refresh = config.get("cashout_on_signal_refresh", True)
-        self._default_stake  = config.get("default_stake", 10.0)
+        self._default_stake      = config.get("default_stake", 10.0)
+        self._funds              = funds
 
         self._state_dir  = Path(state_dir)
         self._wager_file = self._state_dir / _WAGER_FILENAME
@@ -42,9 +54,10 @@ class WagerManager:
         # wager_id → Wager
         self._wagers: dict[str, Wager] = self._load_wagers()
         log.info(
-            "WagerManager initialised — %d wager(s) loaded (%d open)",
+            "WagerManager initialised — %d wager(s) loaded (%d open)%s",
             len(self._wagers),
             self._open_count(),
+            "  [funds guard active]" if funds else "",
         )
 
     # ------------------------------------------------------------------
@@ -55,9 +68,8 @@ class WagerManager:
         """
         Poll the exchange for status updates on all open wagers.
 
-        Wagers that have been cashed out, settled, or lapsed on the exchange
-        side are updated in the registry. Wagers with realised profit exceeding
-        the configured threshold are cashed out proactively.
+        Wagers that settle or lapse have their stake (plus any P&L) credited
+        back to FundsManager. Wagers above the profit threshold are cashed out.
         """
         open_wagers = [w for w in self._wagers.values() if w.is_open()]
         if not open_wagers:
@@ -78,12 +90,15 @@ class WagerManager:
             pl = status_info.get("profit_loss")
 
             if exchange_status in ("settled", "lapsed", "cancelled"):
-                wager.status     = exchange_status
+                wager.status      = exchange_status
                 wager.profit_loss = pl
-                log.info(
-                    "Wager %s → %s  P&L=%s",
-                    wager.wager_id, exchange_status, pl,
-                )
+                log.info("Wager %s → %s  P&L=%s", wager.wager_id, exchange_status, pl)
+                # Credit funds: return stake + profit (or stake - loss)
+                if self._funds is not None:
+                    if exchange_status == "settled" and pl is not None:
+                        self._funds.credit(wager.signal.stake + pl, label=wager.wager_id)
+                    else:
+                        self._funds.credit(wager.signal.stake, label=f"{wager.wager_id} lapsed")
                 changed = True
                 continue
 
@@ -97,7 +112,7 @@ class WagerManager:
     def process_signals(self, signals: list[Signal], adapter: BaseExchangeAdapter) -> None:
         """
         For each actionable signal, optionally cashout any existing wager on
-        the same market, then place a new wager if capacity allows.
+        the same market, then place a new wager if capacity and funds allow.
         """
         actionable = [s for s in signals if s.is_actionable()]
         if not actionable:
@@ -115,6 +130,14 @@ class WagerManager:
                 )
                 break
 
+            # Funds guard — skip if insufficient balance
+            if self._funds is not None and not self._funds.can_wager(signal.stake):
+                log.warning(
+                    "Funds guard: skipping signal for market=%s (stake=%.2f balance=%.2f)",
+                    signal.market_id, signal.stake, self._funds.balance,
+                )
+                continue
+
             if self._cashout_on_refresh:
                 existing = self._find_open_by_market(signal.market_id)
                 if existing:
@@ -124,6 +147,8 @@ class WagerManager:
             wager = self._place(signal, adapter)
             if wager:
                 self._wagers[wager.wager_id] = wager
+                if self._funds is not None:
+                    self._funds.debit(signal.stake, label=wager.wager_id)
                 changed = True
 
         if changed:
@@ -158,9 +183,12 @@ class WagerManager:
 
         if ok:
             from datetime import datetime, timezone
-            wager.status = "cashed_out"
+            wager.status       = "cashed_out"
             wager.cashed_out_at = datetime.now(timezone.utc).isoformat()
             log.info("Cashed out wager %s (market=%s)", wager.wager_id, wager.signal.market_id)
+            # Return stake to available funds (P&L unknown at cashout time)
+            if self._funds is not None:
+                self._funds.credit(wager.signal.stake, label=f"{wager.wager_id} cashout")
         return ok
 
     def _place(self, signal: Signal, adapter: BaseExchangeAdapter) -> Wager | None:

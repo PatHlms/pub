@@ -15,5 +15,25 @@
     "max_open_wagers": 20,
     "cashout_profit_threshold_pct": 10.0,
     "cashout_on_signal_refresh": true
+  },
+  "banking": {
+    "provider": "token_io",
+    "destination": {
+      "sort_code": "",
+      "account_number": "",
+      "account_name": "Exchange Funding Account"
+    }
+  },
+  "funds": {
+    "initial_balance": 1000.0,
+    "currency": "GBP",
+    "min_reserve": 50.0,
+    "top_up_threshold": 200.0,
+    "top_up_amount": 500.0,
+    "destination": {
+      "sort_code": "",
+      "account_number": "",
+      "account_name": "Exchange Funding Account"
+    }
   }
 }

@@ -3,29 +3,32 @@ ralf — Exchange wager client.
 
 Reads auction data produced by alf, applies a pluggable wager strategy,
 and manages a high-frequency place/cashout lifecycle against a configured
-betting exchange.
+betting exchange.  Open Banking (Token.io PIS) is used to top up exchange
+accounts automatically when available funds fall below a threshold.
 
-Modules (exchange adapters)
----------------------------
+Exchanges
+---------
   stub        — Dry-run; logs all actions, no real API calls (default)
+  betfair     — Betfair Exchange APING REST
+  smarkets    — Smarkets REST v3
+  matchbook   — Matchbook REST
+  betdaq      — Betdaq SOAP APING
+  polymarket  — Polymarket CLOB REST
 
-Modules (strategies)
---------------------
+Strategies
+----------
   passthrough — Logs all new records, places no wagers (default)
+
+Banking providers
+-----------------
+  token_io    — Token.io PIS (payment initiation, automatic top-up)
 
 Usage
 -----
-    # Run continuously (poll interval from config/settings.json)
-    python main.py
-
-    # Run one poll cycle then exit
-    python main.py --run-once
-
-    # Override config file
-    python main.py --config /etc/ralf/settings.json
-
-    # Verbose (DEBUG) logging
-    python main.py --verbose
+    python main.py                    # Run continuously
+    python main.py --run-once         # Single poll cycle then exit
+    python main.py --config FILE      # Override config file path
+    python main.py --verbose          # Enable DEBUG logging
 """
 
 import argparse
@@ -80,9 +83,26 @@ def _load_settings(config_path: str) -> dict:
         return json.load(f)
 
 
+def _build_banking_provider(settings: dict):
+    """Return a configured banking provider, or None if banking is not set up."""
+    banking_cfg = settings.get("banking", {})
+    provider_name = banking_cfg.get("provider")
+    if not provider_name:
+        return None
+
+    from src.banking import BANKING_REGISTRY
+    provider_cls = BANKING_REGISTRY.get(provider_name)
+    if provider_cls is None:
+        raise ValueError(
+            f"Unknown banking provider {provider_name!r}. Available: {list(BANKING_REGISTRY)}"
+        )
+    return provider_cls(banking_cfg)
+
+
 def _build_engine(settings: dict):
     from src.engine import Engine
     from src.exchange import EXCHANGE_REGISTRY
+    from src.funds_manager import FundsManager
     from src.reader import DataReader
     from src.strategy import STRATEGY_REGISTRY
     from src.wager_manager import WagerManager
@@ -107,7 +127,23 @@ def _build_engine(settings: dict):
     reader   = DataReader(data_dir=data_dir, state_dir=state_dir)
     strategy = strategy_cls(settings.get("strategy", {}))
     adapter  = exchange_cls(settings.get("exchange", {}))
-    manager  = WagerManager(config=settings.get("wager", {}), state_dir=state_dir)
+
+    # Banking / funds (optional)
+    banking_provider = _build_banking_provider(settings)
+    funds_cfg = settings.get("funds", {})
+    funds = None
+    if funds_cfg or banking_provider:
+        funds = FundsManager(
+            config=funds_cfg,
+            state_dir=state_dir,
+            provider=banking_provider,
+        )
+
+    manager = WagerManager(
+        config=settings.get("wager", {}),
+        state_dir=state_dir,
+        funds=funds,
+    )
 
     return Engine(
         settings=settings,
@@ -115,6 +151,7 @@ def _build_engine(settings: dict):
         strategy=strategy,
         adapter=adapter,
         manager=manager,
+        funds=funds,
     )
 
 
@@ -141,7 +178,7 @@ def main() -> int:
         return 1
 
     if args.run_once:
-        stats = engine.run_once()
+        engine.run_once()
         return 0
 
     engine.run_forever()

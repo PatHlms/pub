@@ -1,9 +1,10 @@
 import logging
 import signal
 import time
-from typing import Any
+from typing import Any, Optional
 
 from src.exchange.base import BaseExchangeAdapter
+from src.funds_manager import FundsManager
 from src.reader import DataReader
 from src.strategy.base import BaseStrategy
 from src.wager_manager import WagerManager
@@ -16,10 +17,12 @@ class Engine:
     Main loop for ralf.
 
     Each cycle:
-        1. poll DataReader for new alf auction records
-        2. pass new records to the Strategy → get signals
-        3. ask WagerManager to review open positions (cashout if profitable)
-        4. ask WagerManager to process signals (place new wagers)
+        1. poll pending bank transfers → credit balance when completed
+        2. check if a top-up is needed → initiate payment if so
+        3. poll DataReader for new alf auction records
+        4. pass new records to the Strategy → get signals
+        5. ask WagerManager to review open positions (cashout if profitable)
+        6. ask WagerManager to process signals (place new wagers, funds-gated)
 
     Runs indefinitely (run_forever) or for a single cycle (run_once).
     Handles SIGINT / SIGTERM for graceful shutdown.
@@ -32,12 +35,14 @@ class Engine:
         strategy: BaseStrategy,
         adapter:  BaseExchangeAdapter,
         manager:  WagerManager,
+        funds:    Optional[FundsManager] = None,
     ) -> None:
         self._settings  = settings
         self._reader    = reader
         self._strategy  = strategy
         self._adapter   = adapter
         self._manager   = manager
+        self._funds     = funds
         self._interval  = settings.get("poll_interval_seconds", 30)
         self._stop      = False
         self._cycle     = 0
@@ -49,6 +54,11 @@ class Engine:
         log.info("=== Cycle %d starting ===", cycle)
         start = time.monotonic()
 
+        # Funds: poll pending transfers, then check for top-up need
+        if self._funds is not None:
+            self._funds.poll_pending_transfers()
+            self._funds.check_and_top_up()
+
         new_records = self._reader.poll()
         signals     = self._strategy.evaluate(new_records)
         self._manager.review_positions(self._adapter)
@@ -56,16 +66,20 @@ class Engine:
 
         elapsed = time.monotonic() - start
         summary = self._manager.summary()
+        funds_status = self._funds.status() if self._funds is not None else {}
+
         log.info(
-            "=== Cycle %d complete in %.2fs | new_records=%d signals=%d wagers=%s ===",
+            "=== Cycle %d complete in %.2fs | new_records=%d signals=%d wagers=%s%s ===",
             cycle, elapsed, len(new_records), len(signals), summary,
+            f" funds={funds_status}" if funds_status else "",
         )
         return {
-            "cycle":        cycle,
-            "new_records":  len(new_records),
-            "signals":      len(signals),
-            "elapsed_secs": elapsed,
+            "cycle":         cycle,
+            "new_records":   len(new_records),
+            "signals":       len(signals),
+            "elapsed_secs":  elapsed,
             "wager_summary": summary,
+            "funds":         funds_status,
         }
 
     def run_forever(self) -> None:
