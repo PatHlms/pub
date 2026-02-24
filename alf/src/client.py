@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 
 from src.adapters import ADAPTER_REGISTRY
 from src.fetcher import Fetcher
+from src.fx import FXProvider
 from src.models import AuctionRecord
 from src.storage import AuctionStorage
 
@@ -20,7 +21,7 @@ class HarvestClient:
 
     Loads site configs, instantiates adapters and fetchers, runs all
     enabled sites concurrently via ThreadPoolExecutor, collects results,
-    and writes to storage.
+    applies FX conversion, and writes to storage.
     """
 
     def __init__(self, config_dir: str, data_dir: Optional[str] = None) -> None:
@@ -75,6 +76,13 @@ class HarvestClient:
                     log.error("[%s] site fetch failed: %s", name, exc)
                     results[name] = []
 
+        # Apply FX conversion in the main thread after all fetches complete
+        fx_cfg = self._settings.get("fx", {})
+        if fx_cfg.get("enabled"):
+            fx = FXProvider(fx_cfg)
+            for name in results:
+                results[name] = [_apply_fx(r, fx) for r in results[name]]
+
         site_stats: dict[str, dict[str, int]] = {}
         total_fetched = 0
         total_written = 0
@@ -125,6 +133,14 @@ class HarvestClient:
     def _load_json(path: Path) -> dict[str, Any]:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+
+def _apply_fx(record: AuctionRecord, fx: FXProvider) -> AuctionRecord:
+    record.base_currency      = fx.base_currency
+    record.sold_price_base    = fx.convert(record.sold_price,    record.currency)
+    record.reserve_price_base = fx.convert(record.reserve_price, record.currency)
+    record.start_price_base   = fx.convert(record.start_price,   record.currency)
+    return record
 
 
 def _empty_stats() -> dict[str, Any]:

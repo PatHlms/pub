@@ -7,5 +7,11 @@
     "max_attempts": 3,
     "backoff_factor": 2.0,
     "retry_on_status": [429, 500, 502, 503, 504]
+  },
+  "fx": {
+    "enabled": true,
+    "base_currency": "GBP",
+    "provider": "frankfurter",
+    "api_key_env_var": null
   }
 }

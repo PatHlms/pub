@@ -10,6 +10,7 @@ from src.classifieds.adapters import CLASSIFIED_ADAPTER_REGISTRY
 from src.classifieds.models import ClassifiedListing
 from src.classifieds.storage import ClassifiedStorage
 from src.fetcher import Fetcher
+from src.fx import FXProvider
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +68,13 @@ class ClassifiedHarvestClient:
                     log.error("[%s] site fetch failed: %s", name, exc)
                     results[name] = []
 
+        # Apply FX conversion in the main thread after all fetches complete
+        fx_cfg = self._settings.get("fx", {})
+        if fx_cfg.get("enabled"):
+            fx = FXProvider(fx_cfg)
+            for name in results:
+                results[name] = [_apply_fx(l, fx) for l in results[name]]
+
         site_stats: dict[str, dict[str, int]] = {}
         total_fetched = 0
         total_written = 0
@@ -112,6 +120,12 @@ class ClassifiedHarvestClient:
     def _load_json(path: Path) -> dict[str, Any]:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
+
+
+def _apply_fx(listing: ClassifiedListing, fx: FXProvider) -> ClassifiedListing:
+    listing.base_currency = fx.base_currency
+    listing.price_base    = fx.convert(listing.price, listing.currency)
+    return listing
 
 
 def _empty_stats() -> dict[str, Any]:

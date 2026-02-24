@@ -39,26 +39,32 @@ class ClassifiedListing:
     # Passthrough for unmapped fields
     raw: dict[str, Any] = field(default_factory=dict)
 
+    # FX-converted price (None when FX is disabled or the currency is unknown)
+    base_currency: Optional[str]  = None
+    price_base: Optional[float]   = None
+
     def to_dict(self) -> dict[str, Any]:
         return {
-            "id":           self.id,
-            "source":       self.source,
-            "manufacturer": self.manufacturer,
-            "model":        self.model,
-            "year":         self.year,
-            "price":        self.price,
-            "currency":     self.currency,
-            "mileage":      self.mileage,
-            "mileage_unit": self.mileage_unit,
-            "condition":    self.condition,
-            "fuel_type":    self.fuel_type,
-            "transmission": self.transmission,
-            "colour":       self.colour,
-            "location":     self.location,
-            "url":          self.url,
-            "listed_date":  self.listed_date,
-            "harvested_at": self.harvested_at,
-            "raw":          self.raw,
+            "id":            self.id,
+            "source":        self.source,
+            "manufacturer":  self.manufacturer,
+            "model":         self.model,
+            "year":          self.year,
+            "price":         self.price,
+            "currency":      self.currency,
+            "mileage":       self.mileage,
+            "mileage_unit":  self.mileage_unit,
+            "condition":     self.condition,
+            "fuel_type":     self.fuel_type,
+            "transmission":  self.transmission,
+            "colour":        self.colour,
+            "location":      self.location,
+            "url":           self.url,
+            "listed_date":   self.listed_date,
+            "harvested_at":  self.harvested_at,
+            "base_currency": self.base_currency,
+            "price_base":    self.price_base,
+            "raw":           self.raw,
         }
 
     @property

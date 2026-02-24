@@ -30,21 +30,31 @@ class AuctionRecord:
     # Passthrough for unmapped fields from the source API response
     raw: dict[str, Any] = field(default_factory=dict)
 
+    # FX-converted prices (None when FX is disabled or the currency is unknown)
+    base_currency: Optional[str]        = None
+    sold_price_base: Optional[float]    = None
+    reserve_price_base: Optional[float] = None
+    start_price_base: Optional[float]   = None
+
     def to_dict(self) -> dict[str, Any]:
         return {
-            "id":            self.id,
-            "source":        self.source,
-            "lot_id":        self.lot_id,
-            "url":           self.url,
-            "manufacturer":  self.manufacturer,
-            "model":         self.model,
-            "sold_price":    self.sold_price,
-            "reserve_price": self.reserve_price,
-            "start_price":   self.start_price,
-            "currency":      self.currency,
-            "auction_date":  self.auction_date,
-            "harvested_at":  self.harvested_at,
-            "raw":           self.raw,
+            "id":                 self.id,
+            "source":             self.source,
+            "lot_id":             self.lot_id,
+            "url":                self.url,
+            "manufacturer":       self.manufacturer,
+            "model":              self.model,
+            "sold_price":         self.sold_price,
+            "reserve_price":      self.reserve_price,
+            "start_price":        self.start_price,
+            "currency":           self.currency,
+            "auction_date":       self.auction_date,
+            "harvested_at":       self.harvested_at,
+            "base_currency":      self.base_currency,
+            "sold_price_base":    self.sold_price_base,
+            "reserve_price_base": self.reserve_price_base,
+            "start_price_base":   self.start_price_base,
+            "raw":                self.raw,
         }
 
     @property
