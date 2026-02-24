@@ -1,0 +1,19 @@
+{
+  "data_dir": "../alf/data",
+  "poll_interval_seconds": 30,
+  "state_dir": "state",
+  "log_level": "INFO",
+  "strategy": {
+    "name": "passthrough"
+  },
+  "exchange": {
+    "name": "stub"
+  },
+  "wager": {
+    "default_stake": 10.0,
+    "currency": "GBP",
+    "max_open_wagers": 20,
+    "cashout_profit_threshold_pct": 10.0,
+    "cashout_on_signal_refresh": true
+  }
+}
