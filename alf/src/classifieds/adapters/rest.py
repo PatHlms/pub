@@ -1,11 +1,20 @@
 import logging
 from typing import Any, Optional
 
-from src.adapters.rest import RestAdapter
+from src.adapters.rest import RestAdapter, _get_field, _to_date, _to_float
 from src.classifieds.adapters.base import BaseClassifiedAdapter
 from src.classifieds.models import ClassifiedListing
 
 log = logging.getLogger(__name__)
+
+
+def _to_int(v: Any) -> Optional[int]:
+    if v is None:
+        return None
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
 
 
 class ClassifiedRestAdapter(BaseClassifiedAdapter, RestAdapter):
@@ -13,10 +22,10 @@ class ClassifiedRestAdapter(BaseClassifiedAdapter, RestAdapter):
     Generic REST adapter for classified listing sites.
 
     Inherits all HTTP fetch and pagination logic from RestAdapter:
-      - _fetch_offset() with offset_step support
-      - _fetch_cursor()
+      - _fetch_offset() with offset_step and max_pages support
+      - _fetch_cursor() with max_pages support
       - _unwrap() with common wrapper key detection
-      - dot-notation field path support in _get()
+      - dot-notation field path support via _get_field()
 
     Overrides parse() and _map_item() to produce ClassifiedListing
     instances with classifieds-specific fields (price, mileage, year,
@@ -58,46 +67,7 @@ class ClassifiedRestAdapter(BaseClassifiedAdapter, RestAdapter):
         mapped_top_keys = {v.split(".")[0] for v in mapping.values() if v}
 
         def _get(canonical: str) -> Any:
-            path = mapping.get(canonical)
-            if not path:
-                return None
-            val: Any = item
-            for part in path.split("."):
-                if not isinstance(val, dict):
-                    return None
-                val = val.get(part)
-            return val
-
-        def _to_float(v: Any) -> Optional[float]:
-            if v is None:
-                return None
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                return None
-
-        def _to_int(v: Any) -> Optional[int]:
-            if v is None:
-                return None
-            try:
-                return int(float(v))
-            except (TypeError, ValueError):
-                return None
-
-        def _to_date(v: Any) -> Optional[str]:
-            from datetime import datetime
-            if v is None:
-                return None
-            s = str(v)
-            if len(s) >= 10 and s[4] == "-" and s[7] == "-":
-                return s[:10]
-            for fmt in ("%d/%m/%Y", "%m/%d/%Y", "%Y%m%d", "%d-%m-%Y"):
-                try:
-                    return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
-                except ValueError:
-                    continue
-            log.debug("[%s] could not parse date %r — storing as-is", source, s)
-            return s
+            return _get_field(item, mapping, canonical)
 
         raw = {k: v for k, v in item.items() if k not in mapped_top_keys}
 
@@ -117,6 +87,6 @@ class ClassifiedRestAdapter(BaseClassifiedAdapter, RestAdapter):
             colour       = _get("colour"),
             location     = _get("location"),
             url          = _get("url"),
-            listed_date  = _to_date(_get("listed_date")),
+            listed_date  = _to_date(_get("listed_date"), source),
             raw          = raw,
         )

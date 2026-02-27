@@ -11,6 +11,48 @@ log = logging.getLogger(__name__)
 _WRAPPER_KEYS = ("itemSummaries", "vehicles", "listings", "results", "data", "lots", "auctions", "items", "records")
 
 
+# ---------------------------------------------------------------------------
+# Module-level parse helpers (shared with classifieds adapter)
+# ---------------------------------------------------------------------------
+
+def _get_field(item: dict, mapping: dict, canonical: str) -> Any:
+    """Extract canonical field value from item using dot-notation paths."""
+    path = mapping.get(canonical)
+    if not path:
+        return None
+    val: Any = item
+    for part in path.split("."):
+        if not isinstance(val, dict):
+            return None
+        val = val.get(part)
+    return val
+
+
+def _to_float(v: Any) -> Optional[float]:
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _to_date(v: Any, source: str = "") -> Optional[str]:
+    if v is None:
+        return None
+    s = str(v)
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[:10]
+    for fmt in ("%d/%m/%Y", "%m/%d/%Y", "%Y%m%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    if source:
+        log.debug("[%s] could not parse date %r — storing as-is", source, s)
+    return s
+
+
 class RestAdapter(BaseAdapter):
     """
     Generic REST adapter for sites that return JSON arrays of auction objects.
@@ -22,6 +64,9 @@ class RestAdapter(BaseAdapter):
       - type "none" (or omitted): single fetch
       - type "offset": increments a page param until empty/short page
       - type "cursor": follows a cursor field in the response until null/absent
+
+    Both pagination types support an optional "max_pages" key (default 1000)
+    to guard against runaway loops on misbehaving APIs.
     """
 
     name = "rest"
@@ -82,10 +127,12 @@ class RestAdapter(BaseAdapter):
         page_param      = pagination.get("page_param", "page")
         page_size_param = pagination.get("page_size_param", "page_size")
         offset          = pagination.get("start_page", 1)
-        page_size       = base_params.get(page_size_param, 100)
+        # Prefer an explicit page_size key; fall back to reading it from default_params
+        page_size       = pagination.get("page_size") or base_params.get(page_size_param, 100)
         # offset_step=1  → traditional page-number APIs (page 1, 2, 3…)
         # offset_step=N  → direct item-offset APIs like eBay (offset 0, 200, 400…)
         step            = pagination.get("offset_step", 1)
+        max_pages       = pagination.get("max_pages", 1000)
         all_records: list[AuctionRecord] = []
         page_count = 0
 
@@ -93,10 +140,19 @@ class RestAdapter(BaseAdapter):
             params = {**base_params, page_param: offset}
             raw    = self.fetcher.get(url, params=params)
             batch  = self.parse(raw)
-            all_records.extend(batch)
             page_count += 1
 
-            if len(batch) < page_size:
+            if not batch:
+                break
+
+            all_records.extend(batch)
+
+            if len(batch) < page_size or page_count >= max_pages:
+                if page_count >= max_pages and len(batch) >= page_size:
+                    log.warning(
+                        "[%s] offset pagination hit max_pages=%d — stopping",
+                        self.config["name"], max_pages,
+                    )
                 break
             offset += step
 
@@ -112,6 +168,7 @@ class RestAdapter(BaseAdapter):
     ) -> list[AuctionRecord]:
         cursor_param          = pagination.get("cursor_param", "cursor")
         cursor_response_field = pagination.get("cursor_response_field", "next_cursor")
+        max_pages             = pagination.get("max_pages", 1000)
         params                = dict(base_params)
         all_records: list[AuctionRecord] = []
         page_count = 0
@@ -121,6 +178,13 @@ class RestAdapter(BaseAdapter):
             batch  = self.parse(raw)
             all_records.extend(batch)
             page_count += 1
+
+            if page_count >= max_pages:
+                log.warning(
+                    "[%s] cursor pagination hit max_pages=%d — stopping",
+                    self.config["name"], max_pages,
+                )
+                break
 
             # Extract next cursor from the response dict
             next_cursor = None
@@ -166,44 +230,15 @@ class RestAdapter(BaseAdapter):
         mapped_top_keys = {v.split(".")[0] for v in mapping.values() if v}
 
         def _get(canonical: str) -> Any:
-            path = mapping.get(canonical)
-            if not path:
-                return None
-            val: Any = item
-            for part in path.split("."):
-                if not isinstance(val, dict):
-                    return None
-                val = val.get(part)
-            return val
-
-        def _to_float(v: Any) -> Optional[float]:
-            if v is None:
-                return None
-            try:
-                return float(v)
-            except (TypeError, ValueError):
-                return None
-
-        def _to_date(v: Any) -> Optional[str]:
-            if v is None:
-                return None
-            s = str(v)
-            if len(s) >= 10 and s[4] == "-" and s[7] == "-":
-                return s[:10]
-            for fmt in ("%d/%m/%Y", "%m/%d/%Y", "%Y%m%d", "%d-%m-%Y"):
-                try:
-                    return datetime.strptime(s, fmt).strftime("%Y-%m-%d")
-                except ValueError:
-                    continue
-            log.debug("[%s] could not parse date %r — storing as-is", source, s)
-            return s
+            return _get_field(item, mapping, canonical)
 
         raw = {k: v for k, v in item.items() if k not in mapped_top_keys}
 
+        _lot = _get("lot_id")
         return AuctionRecord(
             id            = str(_get("id") or ""),
             source        = source,
-            lot_id        = str(_get("lot_id")) if _get("lot_id") is not None else None,
+            lot_id        = str(_lot) if _lot is not None else None,
             url           = _get("url"),
             manufacturer  = str(_get("manufacturer") or "").strip().title(),
             model         = str(_get("model") or "").strip().title(),
@@ -211,6 +246,6 @@ class RestAdapter(BaseAdapter):
             reserve_price = _to_float(_get("reserve_price")),
             start_price   = _to_float(_get("start_price")),
             currency      = str(_get("currency") or "GBP").upper(),
-            auction_date  = _to_date(_get("auction_date")),
+            auction_date  = _to_date(_get("auction_date"), source),
             raw           = raw,
         )

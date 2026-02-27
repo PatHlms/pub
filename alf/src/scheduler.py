@@ -28,9 +28,7 @@ class Scheduler:
             from src.client import HarvestClient
             client_class = HarvestClient
         self._client      = client_class(config_dir=config_dir, data_dir=data_dir)
-        self._interval    = batch_interval_secs or self._client._settings.get(
-            "batch_interval_seconds", 300
-        )
+        self._interval    = batch_interval_secs or self._client.batch_interval_seconds
         self._stop        = False
         self._batch_count = 0
 

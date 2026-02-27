@@ -41,7 +41,10 @@ class TokenBucket:
         # Sleep outside the lock so other threads can manage their own buckets
         time.sleep(wait)
         with self._lock:
-            self._tokens = 0.0
+            now = time.monotonic()
+            elapsed = now - self._last
+            self._last = now
+            self._tokens = min(self._burst, self._tokens + elapsed * self._rate) - 1.0
 
 
 class Fetcher:

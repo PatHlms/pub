@@ -54,6 +54,9 @@ class FXProvider:
         self._api_key: Optional[str] = os.environ.get(key_env) if key_env else None
         # _rates[CCY] = units of base_currency per 1 unit of CCY
         self._rates: dict[str, float] = {}
+        # Set to True after the first fetch attempt (success or failure) so
+        # convert() does not re-trigger _fetch() on every call after a permanent error
+        self._fetch_attempted: bool = False
 
     def convert(self, amount: Optional[float], from_currency: str) -> Optional[float]:
         """
@@ -68,7 +71,7 @@ class FXProvider:
         if from_currency == self.base_currency:
             return round(amount, 2)
 
-        if not self._rates:
+        if not self._rates and not self._fetch_attempted:
             self._fetch()
 
         rate = self._rates.get(from_currency)
@@ -83,6 +86,7 @@ class FXProvider:
     # ------------------------------------------------------------------
 
     def _fetch(self) -> None:
+        self._fetch_attempted = True
         try:
             if self._provider == "frankfurter":
                 self._fetch_frankfurter()

@@ -28,6 +28,8 @@ import argparse
 import logging
 import sys
 
+from dotenv import load_dotenv
+
 from src.scheduler import Scheduler
 
 # Default config directories per module
@@ -89,6 +91,7 @@ def _configure_logging(verbose: bool, log_level: str = "INFO") -> None:
 
 def main() -> int:
     args = _parse_args()
+    load_dotenv()
     _configure_logging(args.verbose)
 
     config_dir = args.config_dir or _DEFAULT_CONFIG_DIR[args.module]

@@ -4,8 +4,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Optional
 
-from dotenv import load_dotenv
-
 from src.classifieds.adapters import CLASSIFIED_ADAPTER_REGISTRY
 from src.classifieds.models import ClassifiedListing
 from src.classifieds.storage import ClassifiedStorage
@@ -24,12 +22,15 @@ class ClassifiedHarvestClient:
     """
 
     def __init__(self, config_dir: str, data_dir: Optional[str] = None) -> None:
-        load_dotenv()
         self._settings    = self._load_json(Path(config_dir) / "settings.json")
         self._sites       = self._load_json(Path(config_dir) / "sites.json").get("sites", [])
         self._data_dir    = data_dir or self._settings.get("data_dir", "data")
         self._max_workers = self._settings.get("max_workers", 4)
         self._storage     = ClassifiedStorage(self._data_dir)
+
+    @property
+    def batch_interval_seconds(self) -> int:
+        return self._settings.get("batch_interval_seconds", 300)
 
     def run(self) -> dict[str, Any]:
         """
@@ -73,7 +74,8 @@ class ClassifiedHarvestClient:
         if fx_cfg.get("enabled"):
             fx = FXProvider(fx_cfg)
             for name in results:
-                results[name] = [_apply_fx(l, fx) for l in results[name]]
+                for listing in results[name]:
+                    _apply_fx(listing, fx)
 
         site_stats: dict[str, dict[str, int]] = {}
         total_fetched = 0
@@ -122,10 +124,9 @@ class ClassifiedHarvestClient:
             return json.load(f)
 
 
-def _apply_fx(listing: ClassifiedListing, fx: FXProvider) -> ClassifiedListing:
+def _apply_fx(listing: ClassifiedListing, fx: FXProvider) -> None:
     listing.base_currency = fx.base_currency
     listing.price_base    = fx.convert(listing.price, listing.currency)
-    return listing
 
 
 def _empty_stats() -> dict[str, Any]:

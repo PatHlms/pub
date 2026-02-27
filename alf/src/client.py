@@ -4,8 +4,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Optional
 
-from dotenv import load_dotenv
-
 from src.adapters import ADAPTER_REGISTRY
 from src.fetcher import Fetcher
 from src.fx import FXProvider
@@ -25,12 +23,15 @@ class HarvestClient:
     """
 
     def __init__(self, config_dir: str, data_dir: Optional[str] = None) -> None:
-        load_dotenv()
         self._settings    = self._load_json(Path(config_dir) / "settings.json")
         self._sites       = self._load_json(Path(config_dir) / "sites.json").get("sites", [])
         self._data_dir    = data_dir or self._settings.get("data_dir", "data")
         self._max_workers = self._settings.get("max_workers", 4)
         self._storage     = AuctionStorage(self._data_dir)
+
+    @property
+    def batch_interval_seconds(self) -> int:
+        return self._settings.get("batch_interval_seconds", 300)
 
     def run(self) -> dict[str, Any]:
         """
@@ -81,7 +82,8 @@ class HarvestClient:
         if fx_cfg.get("enabled"):
             fx = FXProvider(fx_cfg)
             for name in results:
-                results[name] = [_apply_fx(r, fx) for r in results[name]]
+                for record in results[name]:
+                    _apply_fx(record, fx)
 
         site_stats: dict[str, dict[str, int]] = {}
         total_fetched = 0
@@ -135,12 +137,11 @@ class HarvestClient:
             return json.load(f)
 
 
-def _apply_fx(record: AuctionRecord, fx: FXProvider) -> AuctionRecord:
+def _apply_fx(record: AuctionRecord, fx: FXProvider) -> None:
     record.base_currency      = fx.base_currency
     record.sold_price_base    = fx.convert(record.sold_price,    record.currency)
     record.reserve_price_base = fx.convert(record.reserve_price, record.currency)
     record.start_price_base   = fx.convert(record.start_price,   record.currency)
-    return record
 
 
 def _empty_stats() -> dict[str, Any]:
