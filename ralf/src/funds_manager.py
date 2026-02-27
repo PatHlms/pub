@@ -24,6 +24,8 @@ This prevents the engine from placing wagers that would exhaust the
 buffer needed for exchange fees, margin, or in-flight settlements.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from datetime import datetime, timezone

@@ -34,10 +34,12 @@ Token.io status mapping
   CANCELLED                       → "failed"
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import time
-from typing import Any
+from typing import Any, Optional
 
 import requests
 
@@ -50,7 +52,15 @@ _SANDBOX_BASE = "https://api.sandbox.token.io/v1"
 _PROD_AUTH    = "https://auth.token.io/oauth2/token"
 _SANDBOX_AUTH = "https://auth.sandbox.token.io/oauth2/token"
 
-_STATUS_MAP = {
+_DEFAULT_TIMEOUT = 15
+
+_REQUIRED_VARS = (
+    "TOKEN_IO_CLIENT_ID",
+    "TOKEN_IO_CLIENT_SECRET",
+    "TOKEN_IO_MEMBER_ID",
+)
+
+_STATUS_MAP: dict[str, str] = {
     "PENDING_EXTERNAL_AUTHORIZATION": "pending",
     "PENDING_CLEARING":               "processing",
     "COMPLETED":                      "completed",
@@ -64,6 +74,11 @@ class TokenIoProvider(BaseBankingProvider):
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
+        missing = [v for v in _REQUIRED_VARS if not os.environ.get(v)]
+        if missing:
+            raise EnvironmentError(
+                f"[token.io] Missing required environment variable(s): {', '.join(missing)}"
+            )
         self._client_id     = os.environ["TOKEN_IO_CLIENT_ID"]
         self._client_secret = os.environ["TOKEN_IO_CLIENT_SECRET"]
         self._member_id     = os.environ["TOKEN_IO_MEMBER_ID"]
@@ -71,7 +86,8 @@ class TokenIoProvider(BaseBankingProvider):
         self._base_url      = _SANDBOX_BASE if sandbox else _PROD_BASE
         self._auth_url      = _SANDBOX_AUTH if sandbox else _PROD_AUTH
         self._destination   = config.get("destination", {})
-        self._access_token: str | None = None
+        self._timeout       = config.get("timeout_seconds", _DEFAULT_TIMEOUT)
+        self._access_token: Optional[str] = None
         self._token_expiry: float = 0.0
         self._session = requests.Session()
         log.info(
@@ -109,8 +125,8 @@ class TokenIoProvider(BaseBankingProvider):
 
         payload = {
             "requestPayload": {
-                "description":       reference,
-                "callbackState":     "ralf",
+                "description":   reference,
+                "callbackState": "ralf",
                 "from": {
                     "memberId": self._member_id,
                 },
@@ -147,16 +163,15 @@ class TokenIoProvider(BaseBankingProvider):
             }
         }
 
-        resp = self._post("/tokens", payload)
+        resp     = self._post("/tokens", payload)
         token_id = resp.get("token", {}).get("id", "")
         if not token_id:
             raise RuntimeError(f"Token.io /tokens returned no token id: {resp}")
 
         # Redeem the token immediately (TPP-initiated, no user redirect required
         # when the TPP holds SCA credentials on behalf of the payer)
-        redeem_payload = {"state": "ralf-redeem"}
-        redeem_resp = self._post(f"/tokens/{token_id}/transfer", redeem_payload)
-        transfer_id  = redeem_resp.get("transfer", {}).get("id", token_id)
+        redeem_resp = self._post(f"/tokens/{token_id}/transfer", {"state": "ralf-redeem"})
+        transfer_id = redeem_resp.get("transfer", {}).get("id", token_id)
 
         log.info(
             "[token.io] payment initiated: transfer_id=%s amount=%.2f %s → %s %s",
@@ -167,8 +182,8 @@ class TokenIoProvider(BaseBankingProvider):
         return transfer_id
 
     def get_payment_status(self, payment_id: str) -> dict[str, Any]:
-        resp      = self._get(f"/transfers/{payment_id}")
-        transfer  = resp.get("transfer", {})
+        resp       = self._get(f"/transfers/{payment_id}")
+        transfer   = resp.get("transfer", {})
         raw_status = transfer.get("status", "PENDING_EXTERNAL_AUTHORIZATION")
         return {
             "payment_id": payment_id,
@@ -193,7 +208,7 @@ class TokenIoProvider(BaseBankingProvider):
                 "client_secret": self._client_secret,
                 "scope":         "payments",
             },
-            timeout=15,
+            timeout=self._timeout,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -211,7 +226,7 @@ class TokenIoProvider(BaseBankingProvider):
 
     def _get(self, path: str) -> dict:
         resp = self._session.get(
-            f"{self._base_url}{path}", headers=self._headers(), timeout=15
+            f"{self._base_url}{path}", headers=self._headers(), timeout=self._timeout
         )
         resp.raise_for_status()
         return resp.json()
@@ -221,7 +236,7 @@ class TokenIoProvider(BaseBankingProvider):
             f"{self._base_url}{path}",
             json=payload,
             headers=self._headers(),
-            timeout=15,
+            timeout=self._timeout,
         )
         resp.raise_for_status()
         return resp.json()

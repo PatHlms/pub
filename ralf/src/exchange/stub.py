@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from src.exchange.base import BaseExchangeAdapter
-from src.models import Signal, Wager
+from src.models import Signal, Wager, WagerStatus
 
 log = logging.getLogger(__name__)
 
@@ -39,7 +41,7 @@ class StubAdapter(BaseExchangeAdapter):
         return Wager(
             wager_id=wager_id,
             signal=signal,
-            status="open",
+            status=WagerStatus.OPEN,
             placed_at=datetime.now(timezone.utc).isoformat(),
         )
 
@@ -51,7 +53,7 @@ class StubAdapter(BaseExchangeAdapter):
         log.debug("[exchange:stub] GET_STATUS wager_id=%s → matched (stub)", wager_id)
         return {
             "wager_id":     wager_id,
-            "status":       "matched",
+            "status":       WagerStatus.MATCHED,
             "matched_size": 1.0,
             "profit_loss":  None,
         }

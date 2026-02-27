@@ -6,10 +6,13 @@ API:  Polymarket Central Limit Order Book (CLOB) REST API.
 
 Required env vars
 -----------------
-  POLYMARKET_API_KEY     — CLOB API key
-  POLYMARKET_API_SECRET  — CLOB API secret
+  POLYMARKET_API_KEY        — CLOB API key
+  POLYMARKET_API_SECRET     — CLOB API secret
   POLYMARKET_API_PASSPHRASE — CLOB API passphrase
-  POLYMARKET_FUNDER_ADDRESS — (optional) Polygon wallet address for reference
+
+Optional env vars
+-----------------
+  POLYMARKET_FUNDER_ADDRESS — Polygon wallet address for the POLY_ADDRESS header
 
 Signal field mapping
 --------------------
@@ -26,31 +29,41 @@ Notes
   L2 authentication uses HMAC-SHA256 signatures over timestamp + method + path + body.
 """
 
+from __future__ import annotations
+
 import hashlib
 import hmac
+import json
 import logging
 import os
 import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import requests
 
 from src.exchange.base import BaseExchangeAdapter
-from src.models import Signal, Wager
+from src.models import Signal, Wager, WagerStatus
 
 log = logging.getLogger(__name__)
 
-_BASE_URL = "https://clob.polymarket.com"
+_BASE_URL        = "https://clob.polymarket.com"
+_DEFAULT_TIMEOUT = 15
 
-_STATUS_MAP = {
-    "LIVE":      "open",
-    "MATCHED":   "matched",
-    "DELAYED":   "open",
-    "FILLED":    "settled",
-    "CANCELLED": "lapsed",
-    "EXPIRED":   "lapsed",
-    "PENDING":   "open",
+_REQUIRED_VARS = (
+    "POLYMARKET_API_KEY",
+    "POLYMARKET_API_SECRET",
+    "POLYMARKET_API_PASSPHRASE",
+)
+
+_STATUS_MAP: dict[str, str] = {
+    "LIVE":      WagerStatus.OPEN,
+    "MATCHED":   WagerStatus.MATCHED,
+    "DELAYED":   WagerStatus.OPEN,
+    "FILLED":    WagerStatus.SETTLED,
+    "CANCELLED": WagerStatus.CANCELLED,
+    "EXPIRED":   WagerStatus.LAPSED,
+    "PENDING":   WagerStatus.OPEN,
 }
 
 
@@ -58,9 +71,16 @@ class PolymarketAdapter(BaseExchangeAdapter):
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
+        missing = [v for v in _REQUIRED_VARS if not os.environ.get(v)]
+        if missing:
+            raise EnvironmentError(
+                f"[polymarket] Missing required environment variable(s): {', '.join(missing)}"
+            )
         self._api_key    = os.environ["POLYMARKET_API_KEY"]
         self._api_secret = os.environ["POLYMARKET_API_SECRET"]
         self._api_pass   = os.environ["POLYMARKET_API_PASSPHRASE"]
+        self._funder     = os.environ.get("POLYMARKET_FUNDER_ADDRESS", "")
+        self._timeout    = config.get("timeout_seconds", _DEFAULT_TIMEOUT)
         self._session    = requests.Session()
 
     # ------------------------------------------------------------------
@@ -79,10 +99,10 @@ class PolymarketAdapter(BaseExchangeAdapter):
                 "feeRateBps": "0",
             }
         }
-        resp = self._signed_post("/order", payload)
+        resp     = self._signed_post("/order", payload)
         data     = resp.get("orderID", "") or resp.get("order", {}).get("id", "")
         order_id = str(data)
-        status   = _STATUS_MAP.get(resp.get("status", "LIVE"), "open")
+        status   = self._map_status(resp.get("status", ""), order_id)
 
         log.info(
             "[polymarket] placed %s order_id=%s token=%s price=%.4f size=%.2f",
@@ -97,7 +117,7 @@ class PolymarketAdapter(BaseExchangeAdapter):
 
     def cashout(self, wager_id: str) -> bool:
         try:
-            resp = self._signed_delete(f"/order/{wager_id}")
+            resp      = self._signed_delete(f"/order/{wager_id}")
             cancelled = resp.get("cancelled", False) or resp.get("success", False)
             if cancelled:
                 log.info("[polymarket] cancelled order_id=%s", wager_id)
@@ -112,19 +132,29 @@ class PolymarketAdapter(BaseExchangeAdapter):
         resp = self._get(f"/order/{wager_id}")
         return {
             "wager_id":     wager_id,
-            "status":       _STATUS_MAP.get(resp.get("status", "LIVE"), "open"),
+            "status":       self._map_status(resp.get("status", ""), wager_id),
             "matched_size": float(resp.get("size_matched", 0.0)),
             "profit_loss":  None,
         }
 
     def list_open(self) -> list[dict[str, Any]]:
-        resp = self._get("/orders", params={"status": "LIVE"})
+        resp   = self._get("/orders", params={"status": "LIVE"})
         orders = resp if isinstance(resp, list) else resp.get("data", [])
-        return [{"wager_id": o["id"], "status": "open"} for o in orders]
+        return [{"wager_id": o["id"], "status": WagerStatus.OPEN} for o in orders]
 
     # ------------------------------------------------------------------
     # Internal — auth helpers
     # ------------------------------------------------------------------
+
+    def _map_status(self, raw: str, wager_id: str = "") -> str:
+        status = _STATUS_MAP.get(raw)
+        if status is None:
+            log.warning(
+                "[polymarket] unknown order status %r%s — treating as open",
+                raw, f" for {wager_id}" if wager_id else "",
+            )
+            return WagerStatus.OPEN
+        return status
 
     def _auth_headers(self, method: str, path: str, body: str = "") -> dict[str, str]:
         ts        = str(int(time.time()))
@@ -134,29 +164,30 @@ class PolymarketAdapter(BaseExchangeAdapter):
             msg.encode(),
             hashlib.sha256,
         ).hexdigest()
-        return {
-            "POLY_ADDRESS":    os.environ.get("POLYMARKET_FUNDER_ADDRESS", ""),
-            "POLY_SIGNATURE":  signature,
-            "POLY_TIMESTAMP":  ts,
-            "POLY_NONCE":      "0",
-            "Content-Type":    "application/json",
-            "Accept":          "application/json",
+        headers: dict[str, str] = {
+            "POLY_SIGNATURE": signature,
+            "POLY_TIMESTAMP": ts,
+            "POLY_NONCE":     "0",
+            "Content-Type":   "application/json",
+            "Accept":         "application/json",
         }
+        if self._funder:
+            headers["POLY_ADDRESS"] = self._funder
+        return headers
 
-    def _get(self, path: str, params: dict | None = None) -> Any:
+    def _get(self, path: str, params: Optional[dict] = None) -> Any:
         headers = self._auth_headers("GET", path)
         resp = self._session.get(
-            f"{_BASE_URL}{path}", headers=headers, params=params, timeout=15
+            f"{_BASE_URL}{path}", headers=headers, params=params, timeout=self._timeout
         )
         resp.raise_for_status()
         return resp.json()
 
     def _signed_post(self, path: str, payload: dict) -> dict:
-        import json
         body    = json.dumps(payload, separators=(",", ":"))
         headers = self._auth_headers("POST", path, body)
         resp    = self._session.post(
-            f"{_BASE_URL}{path}", data=body, headers=headers, timeout=15
+            f"{_BASE_URL}{path}", data=body, headers=headers, timeout=self._timeout
         )
         resp.raise_for_status()
         return resp.json()
@@ -164,7 +195,7 @@ class PolymarketAdapter(BaseExchangeAdapter):
     def _signed_delete(self, path: str) -> dict:
         headers = self._auth_headers("DELETE", path)
         resp    = self._session.delete(
-            f"{_BASE_URL}{path}", headers=headers, timeout=15
+            f"{_BASE_URL}{path}", headers=headers, timeout=self._timeout
         )
         resp.raise_for_status()
         return resp.json()

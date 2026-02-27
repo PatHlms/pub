@@ -19,26 +19,31 @@ Signal field mapping
   signal.stake        → payout amount in GBP (converted to pence: £10 → 1000)
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 import requests
 
 from src.exchange.base import BaseExchangeAdapter
-from src.models import Signal, Wager
+from src.models import Signal, Wager, WagerStatus
 
 log = logging.getLogger(__name__)
 
-_BASE_URL = "https://api.smarkets.com/v3"
+_BASE_URL        = "https://api.smarkets.com/v3"
+_DEFAULT_TIMEOUT = 15
 
-_STATUS_MAP = {
-    "new":              "open",
-    "partially_filled": "open",
-    "filled":           "settled",
-    "cancelled":        "lapsed",
-    "expired":          "lapsed",
+_REQUIRED_VARS = ("SMARKETS_USERNAME", "SMARKETS_PASSWORD")
+
+_STATUS_MAP: dict[str, str] = {
+    "new":              WagerStatus.OPEN,
+    "partially_filled": WagerStatus.OPEN,
+    "filled":           WagerStatus.SETTLED,
+    "cancelled":        WagerStatus.CANCELLED,
+    "expired":          WagerStatus.LAPSED,
 }
 
 
@@ -46,10 +51,16 @@ class SmarketsAdapter(BaseExchangeAdapter):
 
     def __init__(self, config: dict[str, Any]) -> None:
         super().__init__(config)
+        missing = [v for v in _REQUIRED_VARS if not os.environ.get(v)]
+        if missing:
+            raise EnvironmentError(
+                f"[smarkets] Missing required environment variable(s): {', '.join(missing)}"
+            )
         self._username = os.environ["SMARKETS_USERNAME"]
         self._password = os.environ["SMARKETS_PASSWORD"]
         self._app_key  = os.environ.get("SMARKETS_APP_KEY", "")
-        self._token:  str | None = None
+        self._timeout  = config.get("timeout_seconds", _DEFAULT_TIMEOUT)
+        self._token: Optional[str] = None
         self._session = requests.Session()
         self._session.headers.update({
             "Content-Type": "application/json",
@@ -74,11 +85,11 @@ class SmarketsAdapter(BaseExchangeAdapter):
             "price":         price_bp,
             "quantity":      qty_pence,
         }
-        resp = self._session.post(f"{_BASE_URL}/orders/", json=payload, timeout=15)
+        resp = self._session.post(f"{_BASE_URL}/orders/", json=payload, timeout=self._timeout)
         resp.raise_for_status()
-        order = resp.json().get("order", {})
+        order    = resp.json().get("order", {})
         order_id = str(order.get("id", ""))
-        status   = _STATUS_MAP.get(order.get("status", ""), "open")
+        status   = self._map_status(order.get("status", ""), order_id)
 
         log.info(
             "[smarkets] placed %s order_id=%s market=%s contract=%s price=%d stake=%d",
@@ -95,7 +106,7 @@ class SmarketsAdapter(BaseExchangeAdapter):
     def cashout(self, wager_id: str) -> bool:
         self._ensure_auth()
         try:
-            resp = self._session.delete(f"{_BASE_URL}/orders/{wager_id}/", timeout=15)
+            resp = self._session.delete(f"{_BASE_URL}/orders/{wager_id}/", timeout=self._timeout)
             ok = resp.status_code in (200, 204)
             if ok:
                 log.info("[smarkets] cancelled order_id=%s", wager_id)
@@ -108,12 +119,12 @@ class SmarketsAdapter(BaseExchangeAdapter):
 
     def get_status(self, wager_id: str) -> dict[str, Any]:
         self._ensure_auth()
-        resp = self._session.get(f"{_BASE_URL}/orders/{wager_id}/", timeout=15)
+        resp = self._session.get(f"{_BASE_URL}/orders/{wager_id}/", timeout=self._timeout)
         resp.raise_for_status()
         order = resp.json().get("order", {})
         return {
             "wager_id":     wager_id,
-            "status":       _STATUS_MAP.get(order.get("status", ""), "open"),
+            "status":       self._map_status(order.get("status", ""), wager_id),
             "matched_size": order.get("filled_quantity", 0) / 100,   # pence → GBP
             "profit_loss":  None,
         }
@@ -123,22 +134,32 @@ class SmarketsAdapter(BaseExchangeAdapter):
         resp = self._session.get(
             f"{_BASE_URL}/orders/",
             params={"status": "new,partially_filled"},
-            timeout=15,
+            timeout=self._timeout,
         )
         resp.raise_for_status()
         orders = resp.json().get("orders", [])
-        return [{"wager_id": str(o["id"]), "status": "open"} for o in orders]
+        return [{"wager_id": str(o["id"]), "status": WagerStatus.OPEN} for o in orders]
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _map_status(self, raw: str, wager_id: str = "") -> str:
+        status = _STATUS_MAP.get(raw)
+        if status is None:
+            log.warning(
+                "[smarkets] unknown order status %r%s — treating as open",
+                raw, f" for {wager_id}" if wager_id else "",
+            )
+            return WagerStatus.OPEN
+        return status
 
     def _authenticate(self) -> None:
         resp = requests.post(
             f"{_BASE_URL}/sessions/",
             json={"login": self._username, "password": self._password},
             headers={"Content-Type": "application/json"},
-            timeout=15,
+            timeout=self._timeout,
         )
         resp.raise_for_status()
         self._token = resp.json()["user_token"]
