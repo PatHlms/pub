@@ -37,20 +37,24 @@ class ClassifiedRestAdapter(BaseClassifiedAdapter, RestAdapter):
     def __init__(self, site_config: dict[str, Any], fetcher: Any) -> None:
         # Explicitly initialise BaseClassifiedAdapter (sets self.config, self.fetcher)
         BaseClassifiedAdapter.__init__(self, site_config, fetcher)
+        # Pre-compute once at construction; field_mapping never changes at runtime.
+        self._field_mapping: dict[str, str] = site_config.get("field_mapping", {})
+        self._mapped_top_keys: frozenset[str] = frozenset(
+            v.split(".")[0] for v in self._field_mapping.values() if v
+        )
 
     def fetch(self) -> list[ClassifiedListing]:
         """Delegate to RestAdapter.fetch() — all pagination logic is inherited."""
         return RestAdapter.fetch(self)
 
     def parse(self, raw_response: Any) -> list[ClassifiedListing]:
-        mapping = self.config.get("field_mapping", {})
         source  = self.config["name"]
         records = []
 
         items = self._unwrap(raw_response)
         for item in items:
             try:
-                records.append(self._map_item(item, mapping, source))
+                records.append(self._map_item(item, self._field_mapping, source))
             except Exception as exc:
                 log.warning("[%s] skipping malformed listing: %s — %r", source, exc, item)
 
@@ -64,12 +68,10 @@ class ClassifiedRestAdapter(BaseClassifiedAdapter, RestAdapter):
         source: str,
     ) -> ClassifiedListing:
         """Map a single API response dict to a ClassifiedListing."""
-        mapped_top_keys = {v.split(".")[0] for v in mapping.values() if v}
-
         def _get(canonical: str) -> Any:
             return _get_field(item, mapping, canonical)
 
-        raw = {k: v for k, v in item.items() if k not in mapped_top_keys}
+        raw = {k: v for k, v in item.items() if k not in self._mapped_top_keys}
 
         return ClassifiedListing(
             id           = str(_get("id") or ""),

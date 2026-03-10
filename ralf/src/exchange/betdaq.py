@@ -39,6 +39,9 @@ _ENDPOINT = "https://api.betdaq.com/v2.0/BetDAQAPIService"
 _NS_SOAP  = "http://schemas.xmlsoap.org/soap/envelope/"
 _NS_API   = "http://www.betdaq.com/api/v2/aping"
 
+# Namespace map used by all findtext / findall calls — created once.
+_NS: dict[str, str] = {"api": _NS_API}
+
 # Betdaq polarity: 1 = back, 2 = lay
 _POLARITY: dict[str, int] = {"BACK": 1, "LAY": 2}
 
@@ -52,6 +55,14 @@ _STATUS_MAP: dict[int, str] = {
     6: WagerStatus.LAPSED,    # Void
     7: WagerStatus.LAPSED,    # Suspended
 }
+
+# ListBootstrapOrders body never changes — build it once.
+_LBO_BODY = (
+    "<api:ListBootstrapOrders>"
+    "  <api:sequence>0</api:sequence>"
+    "  <api:want_rollup>false</api:want_rollup>"
+    "</api:ListBootstrapOrders>"
+)
 
 _DEFAULT_TIMEOUT = 15
 
@@ -70,7 +81,28 @@ class BetdaqAdapter(BaseExchangeAdapter):
         self._password = os.environ["BETDAQ_PASSWORD"]
         self._api_key  = os.environ["BETDAQ_API_KEY"]
         self._timeout  = config.get("timeout_seconds", _DEFAULT_TIMEOUT)
-        self._session  = requests.Session()
+
+        # Pre-compute the static SOAP envelope wrapper as bytes.
+        # Credentials are escaped once here rather than on every API call.
+        # Only the <soap:Body> content varies per request.
+        self._envelope_prefix: bytes = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            f'<soap:Envelope xmlns:soap="{_NS_SOAP}" xmlns:api="{_NS_API}">'
+            '  <soap:Header>'
+            '    <api:ExternalApiHeader'
+            '      version="2"'
+            f'      licence="{xml_escape(self._api_key)}"'
+            f'      username="{xml_escape(self._username)}"'
+            f'      password="{xml_escape(self._password)}"'
+            '      languageCode="en" />'
+            '  </soap:Header>'
+            '  <soap:Body>'
+        ).encode("utf-8")
+        self._envelope_suffix: bytes = b"</soap:Body></soap:Envelope>"
+
+        self._session = requests.Session()
+        # Content-Type is constant for all requests — set once on the session.
+        self._session.headers["Content-Type"] = "text/xml; charset=UTF-8"
 
     # ------------------------------------------------------------------
     # BaseExchangeAdapter interface
@@ -81,6 +113,10 @@ class BetdaqAdapter(BaseExchangeAdapter):
         if polarity is None:
             raise ValueError(
                 f"[betdaq] Invalid signal action {signal.action!r}. Expected BACK or LAY."
+            )
+        if not signal.selection_id.isdigit():
+            raise ValueError(
+                f"[betdaq] selection_id must be a numeric string, got {signal.selection_id!r}"
             )
         stake_pence = int(round(signal.stake * 100))
 
@@ -99,10 +135,9 @@ class BetdaqAdapter(BaseExchangeAdapter):
             f"</api:PlaceSingleOrderNoReceipt>"
         )
         root = self._soap("PlaceSingleOrderNoReceipt", body)
-        ns   = {"api": _NS_API}
 
-        order_handle = root.findtext(".//api:OrderHandle", namespaces=ns, default="")
-        ret_code     = int(root.findtext(".//api:ReturnStatus/api:Code", namespaces=ns, default="0"))
+        order_handle = root.findtext(".//api:OrderHandle", namespaces=_NS, default="")
+        ret_code     = int(root.findtext(".//api:ReturnStatus/api:Code", namespaces=_NS, default="0"))
 
         if ret_code != 0 or not order_handle:
             log.error("[betdaq] PlaceSingleOrderNoReceipt error code=%d", ret_code)
@@ -126,6 +161,9 @@ class BetdaqAdapter(BaseExchangeAdapter):
         )
 
     def cashout(self, wager_id: str) -> bool:
+        if not wager_id.isdigit():
+            log.error("[betdaq] cashout: invalid wager_id %r — must be numeric", wager_id)
+            return False
         body = (
             f"<api:CancelOrders>"
             f"  <api:orderHandles>"
@@ -135,8 +173,7 @@ class BetdaqAdapter(BaseExchangeAdapter):
         )
         try:
             root     = self._soap("CancelOrders", body)
-            ns       = {"api": _NS_API}
-            ret_code = int(root.findtext(".//api:ReturnStatus/api:Code", namespaces=ns, default="1"))
+            ret_code = int(root.findtext(".//api:ReturnStatus/api:Code", namespaces=_NS, default="1"))
             ok       = ret_code == 0
             if ok:
                 log.info("[betdaq] cancelled order_handle=%s", wager_id)
@@ -148,20 +185,12 @@ class BetdaqAdapter(BaseExchangeAdapter):
             return False
 
     def get_status(self, wager_id: str) -> dict[str, Any]:
-        body = (
-            "<api:ListBootstrapOrders>"
-            "  <api:sequence>0</api:sequence>"
-            "  <api:want_rollup>false</api:want_rollup>"
-            "</api:ListBootstrapOrders>"
-        )
-        root = self._soap("ListBootstrapOrders", body)
-        ns   = {"api": _NS_API}
+        root = self._list_bootstrap_orders()
 
-        for order in root.findall(".//api:Order", namespaces=ns):
-            handle = order.findtext("api:Handle", namespaces=ns, default="")
-            if handle == wager_id:
-                status_code = int(order.findtext("api:Status", namespaces=ns, default="1"))
-                matched     = float(order.findtext("api:MatchedSize", namespaces=ns, default="0")) / 100
+        for order in root.findall(".//api:Order", namespaces=_NS):
+            if order.findtext("api:Handle", namespaces=_NS, default="") == wager_id:
+                status_code = int(order.findtext("api:Status", namespaces=_NS, default="1"))
+                matched     = float(order.findtext("api:MatchedSize", namespaces=_NS, default="0")) / 100
                 status      = _STATUS_MAP.get(status_code)
                 if status is None:
                     log.warning("[betdaq] Unknown status code %d for %s", status_code, wager_id)
@@ -182,19 +211,12 @@ class BetdaqAdapter(BaseExchangeAdapter):
         }
 
     def list_open(self) -> list[dict[str, Any]]:
-        body = (
-            "<api:ListBootstrapOrders>"
-            "  <api:sequence>0</api:sequence>"
-            "  <api:want_rollup>false</api:want_rollup>"
-            "</api:ListBootstrapOrders>"
-        )
-        root = self._soap("ListBootstrapOrders", body)
-        ns   = {"api": _NS_API}
+        root = self._list_bootstrap_orders()
         out  = []
-        for order in root.findall(".//api:Order", namespaces=ns):
-            status_code = int(order.findtext("api:Status", namespaces=ns, default="0"))
+        for order in root.findall(".//api:Order", namespaces=_NS):
+            status_code = int(order.findtext("api:Status", namespaces=_NS, default="0"))
             if status_code in (1, 2):   # Unmatched or partially matched
-                handle = order.findtext("api:Handle", namespaces=ns, default="")
+                handle = order.findtext("api:Handle", namespaces=_NS, default="")
                 out.append({"wager_id": handle, "status": WagerStatus.OPEN})
         return out
 
@@ -202,31 +224,17 @@ class BetdaqAdapter(BaseExchangeAdapter):
     # Internal
     # ------------------------------------------------------------------
 
+    def _list_bootstrap_orders(self) -> ET.Element:
+        """Send ListBootstrapOrders and return the parsed response root."""
+        return self._soap("ListBootstrapOrders", _LBO_BODY)
+
     def _soap(self, action: str, body_xml: str) -> ET.Element:
-        # Credentials are XML-escaped to prevent malformed envelopes if
-        # username/password contain characters like <, >, &, or "
-        envelope = (
-            '<?xml version="1.0" encoding="UTF-8"?>'
-            f'<soap:Envelope xmlns:soap="{_NS_SOAP}" xmlns:api="{_NS_API}">'
-            '  <soap:Header>'
-            '    <api:ExternalApiHeader'
-            '      version="2"'
-            f'      licence="{xml_escape(self._api_key)}"'
-            f'      username="{xml_escape(self._username)}"'
-            f'      password="{xml_escape(self._password)}"'
-            '      languageCode="en" />'
-            '  </soap:Header>'
-            f'  <soap:Body>{body_xml}</soap:Body>'
-            '</soap:Envelope>'
-        )
+        payload = self._envelope_prefix + body_xml.encode("utf-8") + self._envelope_suffix
         resp = self._session.post(
             _ENDPOINT,
-            data=envelope.encode("utf-8"),
-            headers={
-                "Content-Type": "text/xml; charset=UTF-8",
-                "SOAPAction":   f'"{_NS_API}/{action}"',
-            },
+            data=payload,
+            headers={"SOAPAction": f'"{_NS_API}/{action}"'},
             timeout=self._timeout,
         )
         resp.raise_for_status()
-        return ET.fromstring(resp.text)
+        return ET.fromstring(resp.content)

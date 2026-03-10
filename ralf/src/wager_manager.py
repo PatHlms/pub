@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
@@ -18,6 +20,21 @@ log = logging.getLogger(__name__)
 
 _LOCK_TIMEOUT   = 5
 _WAGER_FILENAME = "wagers.json"
+
+
+def _atomic_json_write(path: Path, data: Any) -> None:
+    """Write *data* as JSON to *path* atomically (temp file + os.replace)."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class WagerManager:
@@ -219,7 +236,7 @@ class WagerManager:
             return None
 
     def _load_wagers(self) -> dict[str, Wager]:
-        self._state_dir.mkdir(parents=True, exist_ok=True)
+        self._state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         if not self._wager_file.exists():
             return {}
         try:
@@ -233,8 +250,10 @@ class WagerManager:
     def _persist_wagers(self) -> None:
         try:
             with filelock.FileLock(str(self._lock_file), timeout=_LOCK_TIMEOUT):
-                with open(self._wager_file, "w", encoding="utf-8") as f:
-                    json.dump([w.to_dict() for w in self._wagers.values()], f, indent=2)
+                _atomic_json_write(
+                    self._wager_file,
+                    [w.to_dict() for w in self._wagers.values()],
+                )
         except filelock.Timeout:
             log.error("Lock timeout persisting wagers — state may be slightly stale on restart")
         except OSError as exc:

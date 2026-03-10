@@ -1,5 +1,6 @@
 import logging
 import os
+import time
 from typing import Optional
 
 import requests
@@ -13,9 +14,13 @@ class FXProvider:
     """
     Fetches live exchange rates and converts prices to a common base currency.
 
-    Rates are fetched once per FXProvider instance (once per batch) and cached
-    in memory. Internally stores rates as "units of base currency per 1 source
-    currency" so conversion is always: base_amount = source_amount * rate.
+    Rates are cached in memory and refreshed automatically when stale
+    (controlled by rates_ttl_seconds, default 3600). A long-lived
+    FXProvider instance therefore shares its rate table across multiple
+    batch runs without re-hitting the network unless the TTL has elapsed.
+
+    Internally stores rates as "units of base currency per 1 source currency"
+    so conversion is always: base_amount = source_amount * rate.
 
     Supported providers
     -------------------
@@ -42,21 +47,23 @@ class FXProvider:
         "enabled": true,
         "base_currency": "GBP",
         "provider": "frankfurter",
-        "api_key_env_var": null
+        "api_key_env_var": null,
+        "rates_ttl_seconds": 3600
       }
     }
     """
 
     def __init__(self, config: dict) -> None:
-        self.base_currency: str   = config.get("base_currency", "GBP").upper()
-        self._provider: str       = config.get("provider", "frankfurter").lower()
-        key_env: Optional[str]    = config.get("api_key_env_var") or None
+        self.base_currency: str      = config.get("base_currency", "GBP").upper()
+        self._provider: str          = config.get("provider", "frankfurter").lower()
+        key_env: Optional[str]       = config.get("api_key_env_var") or None
         self._api_key: Optional[str] = os.environ.get(key_env) if key_env else None
         # _rates[CCY] = units of base_currency per 1 unit of CCY
         self._rates: dict[str, float] = {}
-        # Set to True after the first fetch attempt (success or failure) so
-        # convert() does not re-trigger _fetch() on every call after a permanent error
-        self._fetch_attempted: bool = False
+        # TTL-based refresh: fetch at most once per rates_ttl_seconds period.
+        # float("-inf") ensures the first convert() call always triggers a fetch.
+        self._rates_ttl: float  = float(config.get("rates_ttl_seconds", 3600))
+        self._fetched_at: float = float("-inf")
 
     def convert(self, amount: Optional[float], from_currency: str) -> Optional[float]:
         """
@@ -71,7 +78,7 @@ class FXProvider:
         if from_currency == self.base_currency:
             return round(amount, 2)
 
-        if not self._rates and not self._fetch_attempted:
+        if time.monotonic() - self._fetched_at >= self._rates_ttl:
             self._fetch()
 
         rate = self._rates.get(from_currency)
@@ -86,7 +93,6 @@ class FXProvider:
     # ------------------------------------------------------------------
 
     def _fetch(self) -> None:
-        self._fetch_attempted = True
         try:
             if self._provider == "frankfurter":
                 self._fetch_frankfurter()
@@ -104,7 +110,11 @@ class FXProvider:
             )
         except Exception as exc:
             log.error("Failed to fetch FX rates from %s: %s", self._provider, exc)
-            # Leave _rates empty; convert() will return None for all non-base currencies
+            # _rates may be empty; convert() will return None for all non-base currencies.
+        finally:
+            # Always advance the timestamp so subsequent calls within the TTL
+            # window don't re-trigger _fetch(), even on failure.
+            self._fetched_at = time.monotonic()
 
     # ------------------------------------------------------------------
     # Provider implementations

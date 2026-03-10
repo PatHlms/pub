@@ -82,6 +82,11 @@ class MatchbookAdapter(BaseExchangeAdapter):
         else:
             event_id  = signal.market_id
             market_id = signal.market_id
+        if not event_id.isdigit() or not market_id.isdigit():
+            raise ValueError(
+                f"[matchbook] market_id must be numeric or 'event_id.market_id' "
+                f"with numeric parts, got {signal.market_id!r}"
+            )
 
         payload = {
             "offers": [
@@ -115,6 +120,9 @@ class MatchbookAdapter(BaseExchangeAdapter):
         )
 
     def cashout(self, wager_id: str) -> bool:
+        if not wager_id.isdigit():
+            log.error("[matchbook] cashout: invalid wager_id %r — must be numeric", wager_id)
+            return False
         self._ensure_auth()
         try:
             resp = self._request("DELETE", f"/offers/{wager_id}")
@@ -129,6 +137,10 @@ class MatchbookAdapter(BaseExchangeAdapter):
             return False
 
     def get_status(self, wager_id: str) -> dict[str, Any]:
+        if not wager_id.isdigit():
+            raise ValueError(
+                f"[matchbook] get_status: invalid wager_id {wager_id!r} — must be numeric"
+            )
         self._ensure_auth()
         resp  = self._request("GET", f"/offers/{wager_id}")
         offer = resp.get("offer", {})

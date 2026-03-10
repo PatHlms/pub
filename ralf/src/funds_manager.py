@@ -28,6 +28,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -40,6 +42,21 @@ log = logging.getLogger(__name__)
 
 _LOCK_TIMEOUT   = 5
 _FUNDS_FILENAME = "funds.json"
+
+
+def _atomic_json_write(path: Path, data: Any) -> None:
+    """Write *data* as JSON to *path* atomically (temp file + os.replace)."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 class FundsManager:
@@ -219,7 +236,7 @@ class FundsManager:
         )
 
     def _load_state(self) -> dict:
-        self._state_dir.mkdir(parents=True, exist_ok=True)
+        self._state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         if not self._funds_file.exists():
             return {}
         try:
@@ -232,17 +249,15 @@ class FundsManager:
     def _persist(self) -> None:
         try:
             with filelock.FileLock(str(self._lock_file), timeout=_LOCK_TIMEOUT):
-                with open(self._funds_file, "w", encoding="utf-8") as f:
-                    json.dump(
-                        {
-                            "balance":           self._balance,
-                            "currency":          self._currency,
-                            "pending_transfers": self._pending,
-                            "updated_at":        datetime.now(timezone.utc).isoformat(),
-                        },
-                        f,
-                        indent=2,
-                    )
+                _atomic_json_write(
+                    self._funds_file,
+                    {
+                        "balance":           self._balance,
+                        "currency":          self._currency,
+                        "pending_transfers": self._pending,
+                        "updated_at":        datetime.now(timezone.utc).isoformat(),
+                    },
+                )
         except filelock.Timeout:
             log.error("Lock timeout persisting funds state — state may be slightly stale")
         except OSError as exc:

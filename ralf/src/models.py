@@ -58,6 +58,21 @@ class Signal:
     record_id:    str
     rationale:    str = ""
 
+    def __post_init__(self) -> None:
+        if self.action not in VALID_ACTIONS:
+            raise ValueError(
+                f"Signal.action must be one of {set(VALID_ACTIONS)!r}, got {self.action!r}"
+            )
+        if self.action in ("BACK", "LAY"):
+            if self.stake <= 0:
+                raise ValueError(
+                    f"Signal.stake must be > 0 for {self.action}, got {self.stake}"
+                )
+            if self.price <= 1.0:
+                raise ValueError(
+                    f"Signal.price must be > 1.0 for {self.action}, got {self.price}"
+                )
+
     def is_actionable(self) -> bool:
         return self.action in ("BACK", "LAY")
 

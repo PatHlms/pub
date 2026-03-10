@@ -78,11 +78,17 @@ class BetfairAdapter(BaseExchangeAdapter):
     # ------------------------------------------------------------------
 
     def place(self, signal: Signal) -> Wager:
+        try:
+            selection_id = int(signal.selection_id)
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"[betfair] selection_id must be an integer string, got {signal.selection_id!r}"
+            )
         payload = {
             "marketId": signal.market_id,
             "instructions": [
                 {
-                    "selectionId": int(signal.selection_id),
+                    "selectionId": selection_id,
                     "side":        signal.action,
                     "orderType":   "LIMIT",
                     "limitOrder": {

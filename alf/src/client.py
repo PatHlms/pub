@@ -17,17 +17,23 @@ class HarvestClient:
     """
     Orchestrator for a single micro-batch harvest run.
 
-    Loads site configs, instantiates adapters and fetchers, runs all
-    enabled sites concurrently via ThreadPoolExecutor, collects results,
-    applies FX conversion, and writes to storage.
+    Adapters and their underlying Fetchers (HTTP sessions) are constructed
+    once at startup and reused across every call to run(), so TCP connections
+    and OAuth2 tokens survive between batches. FXProvider is similarly
+    long-lived and refreshes exchange rates only when its TTL expires.
     """
 
     def __init__(self, config_dir: str, data_dir: Optional[str] = None) -> None:
         self._settings    = self._load_json(Path(config_dir) / "settings.json")
-        self._sites       = self._load_json(Path(config_dir) / "sites.json").get("sites", [])
         self._data_dir    = data_dir or self._settings.get("data_dir", "data")
         self._max_workers = self._settings.get("max_workers", 4)
         self._storage     = AuctionStorage(self._data_dir)
+        # Build once; reuse sessions and auth tokens across all batch runs.
+        self._adapters = self._build_adapters(
+            self._load_json(Path(config_dir) / "sites.json").get("sites", [])
+        )
+        fx_cfg = self._settings.get("fx", {})
+        self._fx: Optional[FXProvider] = FXProvider(fx_cfg) if fx_cfg.get("enabled") else None
 
     @property
     def batch_interval_seconds(self) -> int:
@@ -47,24 +53,21 @@ class HarvestClient:
             "site_stats":      { site_name: {"fetched": int, "written": int} }
         }
         """
-        enabled = [s for s in self._sites if s.get("enabled", False)]
-        log.info("Starting batch: %d/%d sites enabled", len(enabled), len(self._sites))
-
-        if not enabled:
+        if not self._adapters:
             log.warning("No enabled sites configured.")
             return _empty_stats()
 
-        global_retry = self._settings.get("retry", {})
+        log.info("Starting batch: %d site(s)", len(self._adapters))
         results:  dict[str, list[AuctionRecord]] = {}
         failures: dict[str, str]                 = {}
 
         with ThreadPoolExecutor(
-            max_workers=min(self._max_workers, len(enabled)),
+            max_workers=min(self._max_workers, len(self._adapters)),
             thread_name_prefix="alf-site",
         ) as executor:
             future_to_name = {
-                executor.submit(self._fetch_site, site, global_retry): site["name"]
-                for site in enabled
+                executor.submit(adapter.fetch): name
+                for name, adapter in self._adapters.items()
             }
             for future in as_completed(future_to_name):
                 name = future_to_name[future]
@@ -77,13 +80,12 @@ class HarvestClient:
                     log.error("[%s] site fetch failed: %s", name, exc)
                     results[name] = []
 
-        # Apply FX conversion in the main thread after all fetches complete
-        fx_cfg = self._settings.get("fx", {})
-        if fx_cfg.get("enabled"):
-            fx = FXProvider(fx_cfg)
+        # Apply FX in the main thread; the long-lived FXProvider refreshes
+        # its rate table automatically when the TTL expires.
+        if self._fx:
             for name in results:
                 for record in results[name]:
-                    _apply_fx(record, fx)
+                    _apply_fx(record, self._fx)
 
         site_stats: dict[str, dict[str, int]] = {}
         total_fetched = 0
@@ -102,8 +104,8 @@ class HarvestClient:
         )
 
         return {
-            "sites_attempted": len(enabled),
-            "sites_succeeded": len(enabled) - len(failures),
+            "sites_attempted": len(self._adapters),
+            "sites_succeeded": len(self._adapters) - len(failures),
             "sites_failed":    len(failures),
             "records_fetched": total_fetched,
             "records_written": total_written,
@@ -114,22 +116,28 @@ class HarvestClient:
     # Internal
     # ------------------------------------------------------------------
 
-    def _fetch_site(
-        self,
-        site_cfg: dict[str, Any],
-        global_retry: dict[str, Any],
-    ) -> list[AuctionRecord]:
-        """Build a Fetcher and Adapter for one site, then fetch. Runs in a worker thread."""
-        adapter_name = site_cfg.get("adapter", "rest")
-        adapter_cls  = ADAPTER_REGISTRY.get(adapter_name)
-        if adapter_cls is None:
-            raise ValueError(
-                f"Unknown adapter {adapter_name!r} for site {site_cfg['name']!r}. "
-                f"Available: {list(ADAPTER_REGISTRY)}"
-            )
-        fetcher = Fetcher(site_cfg, global_retry)
-        adapter = adapter_cls(site_cfg, fetcher)
-        return adapter.fetch()
+    def _build_adapters(self, sites: list[dict[str, Any]]) -> dict[str, Any]:
+        """
+        Construct one Fetcher + Adapter per enabled site.
+
+        Both objects are long-lived: the Fetcher wraps a requests.Session
+        that maintains a connection pool, and the Adapter caches its
+        field_mapping at construction time.
+        """
+        global_retry = self._settings.get("retry", {})
+        adapters: dict[str, Any] = {}
+        for site in sites:
+            if not site.get("enabled", False):
+                continue
+            adapter_name = site.get("adapter", "rest")
+            adapter_cls  = ADAPTER_REGISTRY.get(adapter_name)
+            if adapter_cls is None:
+                raise ValueError(
+                    f"Unknown adapter {adapter_name!r} for site {site['name']!r}. "
+                    f"Available: {list(ADAPTER_REGISTRY)}"
+                )
+            adapters[site["name"]] = adapter_cls(site, Fetcher(site, global_retry))
+        return adapters
 
     @staticmethod
     def _load_json(path: Path) -> dict[str, Any]:

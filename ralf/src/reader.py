@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +12,28 @@ import filelock
 log = logging.getLogger(__name__)
 
 _LOCK_TIMEOUT = 5
+
+
+def _atomic_json_write(path: Path, data: Any) -> None:
+    """
+    Write *data* as JSON to *path* atomically.
+
+    Creates a temp file in the same directory (guaranteeing same filesystem),
+    writes the data, then replaces *path* via os.replace() which is a single
+    rename() syscall on POSIX — a crash mid-write never leaves a partial file.
+    tempfile.mkstemp() creates files with mode 0o600 (owner read/write only).
+    """
+    fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 _STATE_FILENAME = "seen_ids.json"
 
 
@@ -90,7 +114,7 @@ class DataReader:
         return data
 
     def _load_seen_ids(self) -> set[str]:
-        self._state_dir.mkdir(parents=True, exist_ok=True)
+        self._state_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         if not self._state_file.exists():
             return set()
         try:
@@ -104,8 +128,7 @@ class DataReader:
     def _persist_seen_ids(self) -> None:
         try:
             with filelock.FileLock(str(self._lock_file), timeout=_LOCK_TIMEOUT):
-                with open(self._state_file, "w", encoding="utf-8") as f:
-                    json.dump(sorted(self._seen_ids), f)
+                _atomic_json_write(self._state_file, sorted(self._seen_ids))
         except filelock.Timeout:
             log.error("Lock timeout persisting seen_ids — state may be slightly stale")
         except OSError as exc:

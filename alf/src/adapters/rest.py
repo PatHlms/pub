@@ -71,6 +71,16 @@ class RestAdapter(BaseAdapter):
 
     name = "rest"
 
+    def __init__(self, site_config: dict[str, Any], fetcher: Any) -> None:
+        super().__init__(site_config, fetcher)
+        # Pre-compute once at construction; field_mapping never changes at runtime.
+        self._field_mapping: dict[str, str] = site_config.get("field_mapping", {})
+        # Top-level keys whose values appear in field_mapping paths — excluded from raw{}.
+        # frozenset for O(1) `in` checks inside _map_item.
+        self._mapped_top_keys: frozenset[str] = frozenset(
+            v.split(".")[0] for v in self._field_mapping.values() if v
+        )
+
     def fetch(self) -> list[AuctionRecord]:
         """
         Fetch all pages from the auctions endpoint and return a flat record list.
@@ -100,14 +110,13 @@ class RestAdapter(BaseAdapter):
 
         raw_response may be a list of dicts or a dict wrapping a list.
         """
-        mapping = self.config.get("field_mapping", {})
         source  = self.config["name"]
         records = []
 
         items = self._unwrap(raw_response)
         for item in items:
             try:
-                records.append(self._map_item(item, mapping, source))
+                records.append(self._map_item(item, self._field_mapping, source))
             except Exception as exc:
                 log.warning("[%s] skipping malformed record: %s — %r", source, exc, item)
 
@@ -226,13 +235,10 @@ class RestAdapter(BaseAdapter):
         e.g. "currentBidPrice.value" extracts item["currentBidPrice"]["value"].
         The top-level key of any mapped path is excluded from raw{}.
         """
-        # Top-level keys covered by the mapping (may be "a.b.c" → top key "a")
-        mapped_top_keys = {v.split(".")[0] for v in mapping.values() if v}
-
         def _get(canonical: str) -> Any:
             return _get_field(item, mapping, canonical)
 
-        raw = {k: v for k, v in item.items() if k not in mapped_top_keys}
+        raw = {k: v for k, v in item.items() if k not in self._mapped_top_keys}
 
         _lot = _get("lot_id")
         return AuctionRecord(
