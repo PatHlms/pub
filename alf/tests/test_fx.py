@@ -1,6 +1,8 @@
 """
 Unit tests for FXProvider conversion logic and retry-storm guard.
 """
+import time
+
 import pytest
 
 from src.fx import FXProvider
@@ -10,8 +12,9 @@ def _provider(base: str = "GBP", rates: dict | None = None) -> FXProvider:
     """Build a pre-populated FXProvider without hitting the network."""
     cfg = {"base_currency": base, "provider": "frankfurter", "api_key_env_var": None}
     fx = FXProvider(cfg)
-    fx._fetch_attempted = True          # skip network
     fx._rates = rates if rates is not None else {}
+    # Mark as freshly fetched so the TTL guard does not trigger a real HTTP call.
+    fx._fetched_at = time.monotonic()
     return fx
 
 
@@ -62,23 +65,25 @@ class TestFXRetryStorm:
         assert result1 is None
         assert call_count["n"] == 1
 
-        # Subsequent converts must NOT re-trigger _fetch()
+        # Subsequent converts must NOT re-trigger _fetch() (TTL guard)
         fx.convert(200.0, "EUR")
         fx.convert(300.0, "USD")
         assert call_count["n"] == 1, "_fetch() was called more than once after a failure"
 
 
-class TestFXFetchAttempted:
-    def test_flag_set_on_success(self, monkeypatch):
+class TestFXTTLGuard:
+    def test_fetched_at_updated_on_success(self, monkeypatch):
         cfg = {"base_currency": "GBP", "provider": "frankfurter", "api_key_env_var": None}
         fx = FXProvider(cfg)
         monkeypatch.setattr(fx, "_fetch_frankfurter", lambda: fx._rates.update({"USD": 0.79}))
+        t_before = time.monotonic()
         fx.convert(1.0, "USD")
-        assert fx._fetch_attempted is True
+        assert fx._fetched_at >= t_before
 
-    def test_flag_set_on_failure(self, monkeypatch):
+    def test_fetched_at_updated_on_failure(self, monkeypatch):
         cfg = {"base_currency": "GBP", "provider": "frankfurter", "api_key_env_var": None}
         fx = FXProvider(cfg)
         monkeypatch.setattr(fx, "_fetch_frankfurter", lambda: (_ for _ in ()).throw(RuntimeError))
+        t_before = time.monotonic()
         fx.convert(1.0, "USD")
-        assert fx._fetch_attempted is True
+        assert fx._fetched_at >= t_before

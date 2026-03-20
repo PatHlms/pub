@@ -105,6 +105,211 @@
       }
     },
     {
+      "name": "pistonheads",
+      "enabled": false,
+      "adapter": "rest",
+      "base_url": "https://api.pistonheads.com",
+      "auth": {
+        "type": "api_key",
+        "header": "X-API-Key",
+        "env_var": "PISTONHEADS_API_KEY"
+      },
+      "endpoints": {
+        "auctions": "/v1/classifieds/search"
+      },
+      "rate_limit": {
+        "requests_per_second": 2.0,
+        "burst": 5
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff_factor": 2.0,
+        "retry_on_status": [429, 500, 502, 503, 504]
+      },
+      "default_params": {
+        "pageSize": 100,
+        "channel": "cars"
+      },
+      "pagination": {
+        "type": "offset",
+        "page_param": "page",
+        "page_size_param": "pageSize",
+        "page_size": 100,
+        "start_page": 1,
+        "offset_step": 1
+      },
+      "field_mapping": {
+        "id":            "listingId",
+        "manufacturer":  "make",
+        "model":         "model",
+        "year":          "year",
+        "price":         "advertisedPrice.amount",
+        "currency":      "advertisedPrice.currency",
+        "mileage":       "mileage",
+        "mileage_unit":  null,
+        "condition":     "vehicleCondition",
+        "fuel_type":     "fuelType",
+        "transmission":  "gearbox",
+        "colour":        "colour",
+        "location":      "advertiserLocation.town",
+        "url":           "listingUrl",
+        "listed_date":   "publishedAt"
+      }
+    },
+    {
+      "name": "bring_a_trailer",
+      "enabled": false,
+      "adapter": "rest",
+      "base_url": "https://api.bringatrailer.com",
+      "auth": {
+        "type": "api_key",
+        "header": "X-API-Key",
+        "env_var": "BRING_A_TRAILER_API_KEY"
+      },
+      "endpoints": {
+        "auctions": "/v1/auctions"
+      },
+      "rate_limit": {
+        "requests_per_second": 2.0,
+        "burst": 5
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff_factor": 2.0,
+        "retry_on_status": [429, 500, 502, 503, 504]
+      },
+      "default_params": {
+        "per_page": 100,
+        "status": "active"
+      },
+      "pagination": {
+        "type": "offset",
+        "page_param": "page",
+        "page_size_param": "per_page",
+        "start_page": 1,
+        "offset_step": 1
+      },
+      "field_mapping": {
+        "id":            "id",
+        "manufacturer":  "make",
+        "model":         "model",
+        "year":          "year",
+        "price":         "current_bid",
+        "currency":      null,
+        "mileage":       "mileage",
+        "mileage_unit":  null,
+        "condition":     null,
+        "fuel_type":     null,
+        "transmission":  "transmission",
+        "colour":        "color",
+        "location":      "location",
+        "url":           "url",
+        "listed_date":   "listed_at"
+      }
+    },
+    {
+      "name": "cars_and_bids",
+      "enabled": false,
+      "adapter": "rest",
+      "base_url": "https://api.carsandbids.com",
+      "auth": {
+        "type": "api_key",
+        "header": "X-API-Key",
+        "env_var": "CARS_AND_BIDS_API_KEY"
+      },
+      "endpoints": {
+        "auctions": "/v1/auctions"
+      },
+      "rate_limit": {
+        "requests_per_second": 2.0,
+        "burst": 5
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff_factor": 2.0,
+        "retry_on_status": [429, 500, 502, 503, 504]
+      },
+      "default_params": {
+        "per_page": 100,
+        "status": "active"
+      },
+      "pagination": {
+        "type": "offset",
+        "page_param": "page",
+        "page_size_param": "per_page",
+        "start_page": 1,
+        "offset_step": 1
+      },
+      "field_mapping": {
+        "id":            "id",
+        "manufacturer":  "make",
+        "model":         "model",
+        "year":          "year",
+        "price":         "current_bid",
+        "currency":      null,
+        "mileage":       "mileage",
+        "mileage_unit":  null,
+        "condition":     null,
+        "fuel_type":     null,
+        "transmission":  "transmission",
+        "colour":        "color",
+        "location":      "location",
+        "url":           "url",
+        "listed_date":   "listed_at"
+      }
+    },
+    {
+      "name": "car_and_classic",
+      "enabled": false,
+      "adapter": "rest",
+      "base_url": "https://api.carandclassic.com",
+      "auth": {
+        "type": "api_key",
+        "header": "X-API-Key",
+        "env_var": "CARANDCLASSIC_API_KEY"
+      },
+      "endpoints": {
+        "auctions": "/v1/listings/search"
+      },
+      "rate_limit": {
+        "requests_per_second": 2.0,
+        "burst": 5
+      },
+      "retry": {
+        "max_attempts": 3,
+        "backoff_factor": 2.0,
+        "retry_on_status": [429, 500, 502, 503, 504]
+      },
+      "default_params": {
+        "pageSize": 100,
+        "category": "cars"
+      },
+      "pagination": {
+        "type": "offset",
+        "page_param": "page",
+        "page_size_param": "pageSize",
+        "start_page": 1,
+        "offset_step": 1
+      },
+      "field_mapping": {
+        "id":            "listingId",
+        "manufacturer":  "make",
+        "model":         "model",
+        "year":          "year",
+        "price":         "price.amount",
+        "currency":      "price.currency",
+        "mileage":       "mileage",
+        "mileage_unit":  "mileageUnit",
+        "condition":     "condition",
+        "fuel_type":     "fuelType",
+        "transmission":  "gearbox",
+        "colour":        "colour",
+        "location":      "location.town",
+        "url":           "listingUrl",
+        "listed_date":   "publishedAt"
+      }
+    },
+    {
       "name": "motors_co_uk",
       "enabled": true,
       "adapter": "rest",

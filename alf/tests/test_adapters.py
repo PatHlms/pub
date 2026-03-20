@@ -193,6 +193,10 @@ class TestMapItem:
         }
         adapter = RestAdapter.__new__(RestAdapter)
         adapter.config = cfg
+        adapter._field_mapping = cfg["field_mapping"]
+        adapter._mapped_top_keys = frozenset(
+            v.split(".")[0] for v in cfg["field_mapping"].values() if v
+        )
         return adapter
 
     def test_basic_mapping(self):
