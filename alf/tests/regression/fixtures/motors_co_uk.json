@@ -1,0 +1,38 @@
+{
+  "data": [
+    {
+      "reference": "mot-001",
+      "make": "Toyota",
+      "model": "GR Yaris",
+      "year": 2022,
+      "price": 34500,
+      "mileage": 8200,
+      "mileageUnit": "miles",
+      "vehicleCondition": "Used",
+      "fuelType": "Petrol",
+      "transmission": "Manual",
+      "colour": "Circuit Yellow",
+      "town": "Bristol",
+      "url": "https://www.motors.co.uk/car-details/mot-001",
+      "listedDate": "2024-03-10",
+      "seats": 4
+    },
+    {
+      "reference": "mot-002",
+      "make": "honda",
+      "model": "civic type r",
+      "year": 2023,
+      "price": 41995,
+      "mileage": 3500,
+      "mileageUnit": "miles",
+      "vehicleCondition": "Nearly New",
+      "fuelType": "Petrol",
+      "transmission": "Manual",
+      "colour": "Championship White",
+      "town": "Cardiff",
+      "url": "https://www.motors.co.uk/car-details/mot-002",
+      "listedDate": "2024-03-12",
+      "seats": 5
+    }
+  ]
+}

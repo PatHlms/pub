@@ -1,0 +1,34 @@
+{
+  "auctions": [
+    {
+      "id": "cb-001",
+      "make": "Honda",
+      "model": "S2000",
+      "year": 2004,
+      "current_bid": 21000,
+      "mileage": 67000,
+      "transmission": "6-speed Manual",
+      "color": "Spa Yellow Pearl",
+      "location": "Austin, TX",
+      "url": "https://carsandbids.com/auctions/cb-001",
+      "listed_at": "2024-03-05",
+      "end_date": "2024-03-12",
+      "bid_count": 29
+    },
+    {
+      "id": "cb-002",
+      "make": "subaru",
+      "model": "WRX STI",
+      "year": 2006,
+      "current_bid": 18500,
+      "mileage": 74000,
+      "transmission": "6-speed Manual",
+      "color": "WR Blue Pearl",
+      "location": "Denver, CO",
+      "url": "https://carsandbids.com/auctions/cb-002",
+      "listed_at": "2024-03-06",
+      "end_date": "2024-03-13",
+      "bid_count": 41
+    }
+  ]
+}

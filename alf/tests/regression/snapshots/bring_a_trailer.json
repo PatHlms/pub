@@ -1,0 +1,50 @@
+[
+  {
+    "id": "bat-001",
+    "source": "bring_a_trailer",
+    "manufacturer": "Datsun",
+    "model": "240Z",
+    "year": 1972,
+    "price": 28500.0,
+    "currency": "GBP",
+    "mileage": 87000,
+    "mileage_unit": "miles",
+    "condition": null,
+    "fuel_type": null,
+    "transmission": "4-speed Manual",
+    "colour": "Orange",
+    "location": "Portland, OR",
+    "url": "https://bringatrailer.com/listing/bat-001",
+    "listed_date": "2024-03-01",
+    "base_currency": null,
+    "price_base": null,
+    "raw": {
+      "end_date": "2024-03-08",
+      "bid_count": 34
+    }
+  },
+  {
+    "id": "bat-002",
+    "source": "bring_a_trailer",
+    "manufacturer": "Bmw",
+    "model": "2002Tii",
+    "year": 1974,
+    "price": 32000.0,
+    "currency": "GBP",
+    "mileage": 98000,
+    "mileage_unit": "miles",
+    "condition": null,
+    "fuel_type": null,
+    "transmission": "4-speed Manual",
+    "colour": "Sahara",
+    "location": "Chicago, IL",
+    "url": "https://bringatrailer.com/listing/bat-002",
+    "listed_date": "2024-03-03",
+    "base_currency": null,
+    "price_base": null,
+    "raw": {
+      "end_date": "2024-03-10",
+      "bid_count": 47
+    }
+  }
+]

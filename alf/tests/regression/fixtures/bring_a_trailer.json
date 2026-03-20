@@ -1,0 +1,34 @@
+{
+  "auctions": [
+    {
+      "id": "bat-001",
+      "make": "Datsun",
+      "model": "240Z",
+      "year": 1972,
+      "current_bid": 28500,
+      "mileage": 87000,
+      "transmission": "4-speed Manual",
+      "color": "Orange",
+      "location": "Portland, OR",
+      "url": "https://bringatrailer.com/listing/bat-001",
+      "listed_at": "2024-03-01",
+      "end_date": "2024-03-08",
+      "bid_count": 34
+    },
+    {
+      "id": "bat-002",
+      "make": "BMW",
+      "model": "2002tii",
+      "year": 1974,
+      "current_bid": 32000,
+      "mileage": 98000,
+      "transmission": "4-speed Manual",
+      "color": "Sahara",
+      "location": "Chicago, IL",
+      "url": "https://bringatrailer.com/listing/bat-002",
+      "listed_at": "2024-03-03",
+      "end_date": "2024-03-10",
+      "bid_count": 47
+    }
+  ]
+}

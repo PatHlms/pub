@@ -1,0 +1,28 @@
+{
+  "itemSummaries": [
+    {
+      "itemId": "ebay-uk-001",
+      "title": "2019 Porsche 911 Carrera 3.0T PDK",
+      "itemEndDate": "2024-03-15",
+      "currentBidPrice": {"value": "68500", "currency": "GBP"},
+      "startingBidPrice": {"value": "1", "currency": "GBP"},
+      "itemWebUrl": "https://www.ebay.co.uk/itm/ebay-uk-001",
+      "condition": "Used",
+      "categoryId": "9801",
+      "buyItNowPrice": null
+    },
+    {
+      "itemId": "ebay-uk-002",
+      "title": "1995 Mazda MX-5 1.8i 2dr Roadster",
+      "itemEndDate": "2024-03-16",
+      "currentBidPrice": {"value": "7200", "currency": "GBP"},
+      "startingBidPrice": {"value": "5000", "currency": "GBP"},
+      "itemWebUrl": "https://www.ebay.co.uk/itm/ebay-uk-002",
+      "condition": "Used",
+      "categoryId": "9801",
+      "buyItNowPrice": null
+    }
+  ],
+  "total": 2,
+  "next": null
+}

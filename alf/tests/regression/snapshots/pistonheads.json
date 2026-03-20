@@ -1,0 +1,48 @@
+[
+  {
+    "id": "ph-001",
+    "source": "pistonheads",
+    "manufacturer": "Porsche",
+    "model": "911 Gt3",
+    "year": 2021,
+    "price": 145000.0,
+    "currency": "GBP",
+    "mileage": 4800,
+    "mileage_unit": "miles",
+    "condition": "Used",
+    "fuel_type": "Petrol",
+    "transmission": "PDK",
+    "colour": "Guards Red",
+    "location": "London",
+    "url": "https://www.pistonheads.com/classifieds/ph-001",
+    "listed_date": "2024-03-08",
+    "base_currency": null,
+    "price_base": null,
+    "raw": {
+      "power": "510bhp"
+    }
+  },
+  {
+    "id": "ph-002",
+    "source": "pistonheads",
+    "manufacturer": "Ferrari",
+    "model": "488 Gtb",
+    "year": 2017,
+    "price": 185000.0,
+    "currency": "GBP",
+    "mileage": 12000,
+    "mileage_unit": "miles",
+    "condition": "Used",
+    "fuel_type": "Petrol",
+    "transmission": "F1 DCT",
+    "colour": "Rosso Corsa",
+    "location": "Surrey",
+    "url": "https://www.pistonheads.com/classifieds/ph-002",
+    "listed_date": "2024-03-09",
+    "base_currency": null,
+    "price_base": null,
+    "raw": {
+      "power": "660bhp"
+    }
+  }
+]

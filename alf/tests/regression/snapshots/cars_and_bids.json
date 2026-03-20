@@ -1,0 +1,50 @@
+[
+  {
+    "id": "cb-001",
+    "source": "cars_and_bids",
+    "manufacturer": "Honda",
+    "model": "S2000",
+    "year": 2004,
+    "price": 21000.0,
+    "currency": "GBP",
+    "mileage": 67000,
+    "mileage_unit": "miles",
+    "condition": null,
+    "fuel_type": null,
+    "transmission": "6-speed Manual",
+    "colour": "Spa Yellow Pearl",
+    "location": "Austin, TX",
+    "url": "https://carsandbids.com/auctions/cb-001",
+    "listed_date": "2024-03-05",
+    "base_currency": null,
+    "price_base": null,
+    "raw": {
+      "end_date": "2024-03-12",
+      "bid_count": 29
+    }
+  },
+  {
+    "id": "cb-002",
+    "source": "cars_and_bids",
+    "manufacturer": "Subaru",
+    "model": "Wrx Sti",
+    "year": 2006,
+    "price": 18500.0,
+    "currency": "GBP",
+    "mileage": 74000,
+    "mileage_unit": "miles",
+    "condition": null,
+    "fuel_type": null,
+    "transmission": "6-speed Manual",
+    "colour": "WR Blue Pearl",
+    "location": "Denver, CO",
+    "url": "https://carsandbids.com/auctions/cb-002",
+    "listed_date": "2024-03-06",
+    "base_currency": null,
+    "price_base": null,
+    "raw": {
+      "end_date": "2024-03-13",
+      "bid_count": 41
+    }
+  }
+]

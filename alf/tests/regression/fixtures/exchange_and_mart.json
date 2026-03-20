@@ -1,0 +1,36 @@
+{
+  "results": [
+    {
+      "adId": "em-001",
+      "make": "Ford",
+      "model": "Focus ST",
+      "registrationYear": 2019,
+      "price": 16750,
+      "odometer": 42000,
+      "odometerUnit": "miles",
+      "fuelType": "Petrol",
+      "gearbox": "Manual",
+      "colour": "Blue",
+      "advertiserLocation": "Manchester",
+      "adUrl": "https://www.exchangeandmart.co.uk/used-cars/em-001",
+      "datePosted": "2024-02-20",
+      "engine": "2.0T EcoBoost"
+    },
+    {
+      "adId": "em-002",
+      "make": "vauxhall",
+      "model": "astra",
+      "registrationYear": 2018,
+      "price": 9995,
+      "odometer": 55000,
+      "odometerUnit": "miles",
+      "fuelType": "Diesel",
+      "gearbox": "Manual",
+      "colour": "Silver",
+      "advertiserLocation": "Leeds",
+      "adUrl": "https://www.exchangeandmart.co.uk/used-cars/em-002",
+      "datePosted": "28/02/2024",
+      "engine": "1.6 CDTi"
+    }
+  ]
+}

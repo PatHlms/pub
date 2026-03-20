@@ -1,0 +1,38 @@
+{
+  "listings": [
+    {
+      "listingId": "cac-001",
+      "make": "Jaguar",
+      "model": "E-Type Series 1",
+      "year": 1965,
+      "price": {"amount": 95000, "currency": "GBP"},
+      "mileage": 62000,
+      "mileageUnit": "miles",
+      "condition": "Good",
+      "fuelType": "Petrol",
+      "gearbox": "4-speed Manual",
+      "colour": "Opalescent Gunmetal Grey",
+      "location": {"town": "Oxfordshire"},
+      "listingUrl": "https://www.carandclassic.com/car/cac-001",
+      "publishedAt": "2024-03-02",
+      "category": "Classic"
+    },
+    {
+      "listingId": "cac-002",
+      "make": "triumph",
+      "model": "TR6",
+      "year": 1973,
+      "price": {"amount": 22500, "currency": "GBP"},
+      "mileage": 45000,
+      "mileageUnit": "miles",
+      "condition": "Good",
+      "fuelType": "Petrol",
+      "gearbox": "4-speed Manual",
+      "colour": "Signal Red",
+      "location": {"town": "Yorkshire"},
+      "listingUrl": "https://www.carandclassic.com/car/cac-002",
+      "publishedAt": "2024-03-04",
+      "category": "Classic"
+    }
+  ]
+}

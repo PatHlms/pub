@@ -1,0 +1,50 @@
+[
+  {
+    "id": "at-001",
+    "source": "autotrader_uk",
+    "manufacturer": "Volkswagen",
+    "model": "Golf Gti",
+    "year": 2020,
+    "price": 22995.0,
+    "currency": "GBP",
+    "mileage": 28500,
+    "mileage_unit": "miles",
+    "condition": "Used",
+    "fuel_type": "Petrol",
+    "transmission": "Manual",
+    "colour": "Tornado Red",
+    "location": "Birmingham",
+    "url": "https://www.autotrader.co.uk/car-details/at-001",
+    "listed_date": "2024-03-01",
+    "base_currency": null,
+    "price_base": null,
+    "raw": {
+      "bodyType": "Hatchback",
+      "doors": 5
+    }
+  },
+  {
+    "id": "at-002",
+    "source": "autotrader_uk",
+    "manufacturer": "Bmw",
+    "model": "3 Series",
+    "year": 2021,
+    "price": 31500.0,
+    "currency": "GBP",
+    "mileage": 15000,
+    "mileage_unit": "miles",
+    "condition": "Used",
+    "fuel_type": "Diesel",
+    "transmission": "Automatic",
+    "colour": "Alpine White",
+    "location": "London",
+    "url": "https://www.autotrader.co.uk/car-details/at-002",
+    "listed_date": "2024-03-05",
+    "base_currency": null,
+    "price_base": null,
+    "raw": {
+      "bodyType": "Saloon",
+      "doors": 4
+    }
+  }
+]

@@ -1,0 +1,46 @@
+[
+  {
+    "id": "ebay-uk-001",
+    "source": "ebay_motors_uk",
+    "lot_id": "ebay-uk-001",
+    "url": "https://www.ebay.co.uk/itm/ebay-uk-001",
+    "manufacturer": "",
+    "model": "2019 Porsche 911 Carrera 3.0T Pdk",
+    "sold_price": 68500.0,
+    "reserve_price": null,
+    "start_price": 1.0,
+    "currency": "GBP",
+    "auction_date": "2024-03-15",
+    "base_currency": null,
+    "sold_price_base": null,
+    "reserve_price_base": null,
+    "start_price_base": null,
+    "raw": {
+      "condition": "Used",
+      "categoryId": "9801",
+      "buyItNowPrice": null
+    }
+  },
+  {
+    "id": "ebay-uk-002",
+    "source": "ebay_motors_uk",
+    "lot_id": "ebay-uk-002",
+    "url": "https://www.ebay.co.uk/itm/ebay-uk-002",
+    "manufacturer": "",
+    "model": "1995 Mazda Mx-5 1.8I 2Dr Roadster",
+    "sold_price": 7200.0,
+    "reserve_price": null,
+    "start_price": 5000.0,
+    "currency": "GBP",
+    "auction_date": "2024-03-16",
+    "base_currency": null,
+    "sold_price_base": null,
+    "reserve_price_base": null,
+    "start_price_base": null,
+    "raw": {
+      "condition": "Used",
+      "categoryId": "9801",
+      "buyItNowPrice": null
+    }
+  }
+]
