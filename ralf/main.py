@@ -1,7 +1,7 @@
 """
 ralf — Exchange wager client.
 
-Reads auction data produced by alf, applies a pluggable wager strategy,
+Reads auction data produced by ellis, applies a pluggable wager strategy,
 and manages a high-frequency place/cashout lifecycle against a configured
 betting exchange.  Open Banking (Token.io PIS) is used to top up exchange
 accounts automatically when available funds fall below a threshold.
