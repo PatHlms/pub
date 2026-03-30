@@ -1,0 +1,13 @@
+{
+  "provider": "openai",
+  "system": "You are a helpful coding assistant. Be concise and precise. When providing code, prefer complete, runnable examples.",
+  "history_limit": 20,
+  "openai": {
+    "model": "gpt-4o",
+    "max_tokens": 4096
+  },
+  "gemini": {
+    "model": "gemini-2.0-flash",
+    "max_tokens": 4096
+  }
+}
